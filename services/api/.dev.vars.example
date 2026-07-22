@@ -1,0 +1,10 @@
+# Local secrets only. Copy to .dev.vars; never commit the real file.
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=openrouter/free
+
+# Required only when APP_ENV=production.
+CF_ACCESS_TEAM_DOMAIN=your-team.cloudflareaccess.com
+CF_ACCESS_AUD=
+
+# SEC asks automated clients to identify themselves.
+SEC_USER_AGENT=FiduciaryOS research your-email@example.com

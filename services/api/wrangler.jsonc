@@ -1,0 +1,46 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "financial-independence-digital-twin",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-22",
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  "assets": {
+    "directory": "../../apps/web/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "vars": {
+    "APP_ENV": "demo",
+    "OPENROUTER_MODEL": "openrouter/free",
+    "APP_PUBLIC_URL": "http://localhost:8787",
+    "SEC_USER_AGENT": "FiduciaryOS research demo contact@example.com"
+  },
+  "d1_databases": [
+    {
+      "binding": "FIDT_DB",
+      "database_name": "fidt-demo",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "CACHE",
+      "id": "00000000000000000000000000000000"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "DOCUMENTS",
+      "bucket_name": "fidt-evidence"
+    }
+  ],
+  "vectorize": [
+    {
+      "binding": "EVIDENCE_INDEX",
+      "index_name": "fidt-evidence-index"
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+import { createBrowserRouter, Navigate } from "react-router-dom";
+import { AppShell } from "./components/AppShell";
+import { AuditPage } from "./pages/AuditPage";
+import { ComparePage } from "./pages/ComparePage";
+import { DashboardPage } from "./pages/DashboardPage";
+import { HouseholdPage } from "./pages/HouseholdPage";
+import { RecommendationPage } from "./pages/RecommendationPage";
+
+export const router = createBrowserRouter([
+  {
+    path: "/",
+    element: <AppShell />,
+    children: [
+      { index: true, element: <DashboardPage /> },
+      { path: "households/:householdId", element: <HouseholdPage /> },
+      { path: "households/:householdId/compare", element: <ComparePage /> },
+      { path: "households/:householdId/recommendation", element: <RecommendationPage /> },
+      { path: "households/:householdId/audit", element: <AuditPage /> },
+      { path: "*", element: <Navigate to="/" replace /> }
+    ]
+  }
+]);

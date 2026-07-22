@@ -1,0 +1,44 @@
+{
+  "strategies": [
+    {
+      "type": "RENTAL",
+      "rental": {
+        "purchasePrice": 525000,
+        "downPaymentPercent": 0.25,
+        "closingCostPercent": 0.03,
+        "mortgageRate": 0.0675,
+        "mortgageTermYears": 30,
+        "monthlyRent": 3650,
+        "vacancyRate": 0.06,
+        "managementRate": 0.08,
+        "annualPropertyTax": 6825,
+        "annualInsurance": 2200,
+        "annualMaintenanceRate": 0.01,
+        "annualCapexRate": 0.0075,
+        "appreciationRate": 0.03,
+        "rentGrowthRate": 0.025,
+        "sellingCostPercent": 0.06,
+        "hoursPerMonth": 6,
+        "hourlyTimeValue": 90
+      }
+    },
+    {
+      "type": "PORTFOLIO",
+      "portfolio": {
+        "initialInvestment": 147000,
+        "annualContribution": 0,
+        "equityAllocation": 0.75,
+        "bondAllocation": 0.2,
+        "cashAllocation": 0.05,
+        "fundExpenseRate": 0.0012
+      }
+    },
+    {
+      "type": "DEBT_PAYDOWN",
+      "debt": {
+        "liabilityId": "liability-student",
+        "lumpSum": 42000
+      }
+    }
+  ]
+}
