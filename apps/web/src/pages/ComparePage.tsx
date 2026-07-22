@@ -7,24 +7,57 @@ import {
   Scale,
   TrendingUp
 } from "lucide-react";
-import { useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import type { ScenarioComparisonResponse, ScenarioComparisonRequest } from "@fidt/contracts";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
+import type {
+  FinancialEvent,
+  ScenarioComparisonResponse,
+  ScenarioComparisonRequest
+} from "@fidt/contracts";
 import { Badge, ErrorState, MiniLine } from "../components/Ui";
 import { api } from "../lib/api";
 import { currency, fullCurrency, percent } from "../lib/format";
 
 export function ComparePage() {
   const { householdId = "" } = useParams();
-  const [capital, setCapital] = useState(147_000);
-  const [purchasePrice, setPurchasePrice] = useState(525_000);
-  const [rent, setRent] = useState(3_650);
-  const [mortgageRate, setMortgageRate] = useState(6.75);
+  const [search] = useSearchParams();
+  const triggerEventId = search.get("event") ?? "";
+  return (
+    <CompareWorkflow
+      key={`${householdId}:${triggerEventId}`}
+      householdId={householdId}
+      triggerEventId={triggerEventId}
+    />
+  );
+}
+
+function CompareWorkflow({
+  householdId,
+  triggerEventId
+}: {
+  householdId: string;
+  triggerEventId: string;
+}) {
+  const preset = decisionPreset(triggerEventId);
+  const [capital, setCapital] = useState(preset.capital);
+  const [purchasePrice, setPurchasePrice] = useState(preset.purchasePrice);
+  const [rent, setRent] = useState(preset.rent);
+  const [mortgageRate, setMortgageRate] = useState(preset.mortgageRate);
+  const [triggerEvent, setTriggerEvent] = useState<FinancialEvent | null>(null);
   const [result, setResult] = useState<ScenarioComparisonResponse | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (!triggerEventId) return;
+    void api
+      .household(householdId)
+      .then((data) =>
+        setTriggerEvent(data.events.find((event) => event.id === triggerEventId) ?? null)
+      );
+  }, [householdId, triggerEventId]);
   const request = useMemo<ScenarioComparisonRequest>(
     () => ({
+      ...(triggerEventId ? { triggerEventId } : {}),
       strategies: [
         {
           type: "RENTAL",
@@ -65,7 +98,7 @@ export function ComparePage() {
         }
       ]
     }),
-    [capital, purchasePrice, rent, mortgageRate]
+    [capital, purchasePrice, rent, mortgageRate, triggerEventId]
   );
   const run = () => {
     setLoading(true);
@@ -98,6 +131,19 @@ export function ComparePage() {
           </div>
         </div>
       </section>
+      {triggerEvent ? (
+        <section className="decision-trigger" aria-label="Triggering decision event">
+          <span className={`timeline-dot severity-${triggerEvent.severity.toLowerCase()}`} />
+          <div>
+            <span className="eyebrow">Triggered by household event</span>
+            <strong>{triggerEvent.title}</strong>
+            <p>{triggerEvent.description}</p>
+          </div>
+          <Badge tone={triggerEvent.severity === "HIGH" ? "danger" : "warn"}>
+            {triggerEvent.severity}
+          </Badge>
+        </section>
+      ) : null}
       <section className="compare-layout">
         <aside className="panel assumption-panel">
           <div className="panel-heading">
@@ -288,11 +334,30 @@ function ScenarioResults({
                 {fullCurrency.format(conflict.annualRevenueDifference)}.
               </p>
             ))}
+            <p className="economics-explainer">
+              This comparison includes advisory fees so we can detect when a client-first
+              recommendation may also reduce assets under management and advisor revenue.
+            </p>
           </div>
         </div>
       ) : null}
     </>
   );
+}
+
+function decisionPreset(eventId: string): {
+  capital: number;
+  purchasePrice: number;
+  rent: number;
+  mortgageRate: number;
+} {
+  if (eventId === "event-rsu-vest") {
+    return { capital: 71_000, purchasePrice: 525_000, rent: 3_650, mortgageRate: 6.75 };
+  }
+  if (eventId === "event-concentration") {
+    return { capital: 292_000, purchasePrice: 625_000, rent: 4_100, mortgageRate: 6.75 };
+  }
+  return { capital: 147_000, purchasePrice: 525_000, rent: 3_650, mortgageRate: 6.75 };
 }
 
 function Input({

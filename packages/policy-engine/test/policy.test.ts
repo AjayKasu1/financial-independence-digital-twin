@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { createDeterministicRecommendation } from "@fidt/ai-orchestrator";
 import {
+  calculateAnnualAdvisoryFee,
   demoAssumptions,
   demoFeeSchedule,
   demoHousehold,
   demoStrategies,
+  detectAdvisorRevenueConflict,
   runScenarioComparison
 } from "@fidt/domain";
 import { evaluateRecommendation } from "../src";
@@ -29,6 +31,27 @@ describe("fiduciary policy engine", () => {
     const result = evaluateRecommendation({ recommendation: valid, scenarios, conflicts: [], now });
     expect(result.status).toBe("APPROVE");
     expect(result.humanReviewRequired).toBe(true);
+  });
+
+  it("approves the governed fallback for the demo comparison with fee conflicts disclosed", () => {
+    const managedAssets = demoHousehold.accounts
+      .filter((account) => account.managed)
+      .reduce((sum, account) => sum + account.balance, 0);
+    const baselineFee = calculateAnnualAdvisoryFee(managedAssets, demoFeeSchedule);
+    const conflicts = scenarios
+      .map((scenario) => detectAdvisorRevenueConflict(baselineFee, scenario.firstYearAdvisoryFee))
+      .filter((conflict) => conflict !== null);
+    const recommendation = createDeterministicRecommendation({
+      household: demoHousehold,
+      scenarios,
+      conflicts,
+      citations: [],
+      now
+    });
+
+    const result = evaluateRecommendation({ recommendation, scenarios, conflicts, now });
+    expect(result.status).toBe("APPROVE");
+    expect(recommendation.conflictsDisclosed).toHaveLength(conflicts.length);
   });
 
   it("requires changes for guarantee language", () => {

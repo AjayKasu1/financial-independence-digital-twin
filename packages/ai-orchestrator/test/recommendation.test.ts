@@ -55,6 +55,7 @@ describe("recommendation orchestration", () => {
       Promise.resolve(
         new Response(
           JSON.stringify({
+            model: "nvidia/nemotron-3-super-120b-a12b:free",
             choices: [
               {
                 message: {
@@ -88,7 +89,7 @@ describe("recommendation orchestration", () => {
     });
     const recommendation = await generator.generate(context);
     expect(recommendation.generatedBy).toBe("OPENROUTER");
-    expect(recommendation.modelId).toBe("test/model");
+    expect(recommendation.modelId).toBe("nvidia/nemotron-3-super-120b-a12b:free");
     expect(recommendation.householdId).toBe(demoHousehold.id);
   });
 
@@ -156,6 +157,53 @@ describe("recommendation orchestration", () => {
       expect.objectContaining({ type: "json_schema" }),
       expect.objectContaining({ type: "json_schema" })
     ]);
+  });
+
+  it("supplies stored compliance feedback to a repair request", async () => {
+    let repairFeedback: unknown;
+    const captureRequest: typeof fetch = (_input, init) => {
+      if (typeof init?.body !== "string") throw new TypeError("Expected a JSON request body");
+      const body = JSON.parse(init.body) as {
+        messages: readonly { role: string; content: string }[];
+      };
+      const userMessage = body.messages.find((message) => message.role === "user");
+      repairFeedback = userMessage
+        ? (JSON.parse(userMessage.content) as { complianceFeedback?: unknown }).complianceFeedback
+        : null;
+      return Promise.resolve(
+        new Response(JSON.stringify({ error: { message: "captured" } }), { status: 503 })
+      );
+    };
+    const generator = new OpenRouterRecommendationGenerator({
+      apiKey: "test-key",
+      model: "test/model",
+      fetchImplementation: captureRequest
+    });
+
+    await expect(
+      generator.generate({
+        ...context,
+        complianceFeedback: {
+          status: "REQUIRE_CHANGES",
+          reasons: [
+            {
+              code: "MISSING_EVIDENCE",
+              severity: "BLOCKING",
+              message: "Attach evidence.",
+              statementId: "statement-1"
+            }
+          ],
+          requiredActions: ["Attach a traceable citation."]
+        }
+      })
+    ).rejects.toThrow("captured");
+
+    expect(repairFeedback).toEqual(
+      expect.objectContaining({
+        status: "REQUIRE_CHANGES",
+        requiredActions: ["Attach a traceable citation."]
+      })
+    );
   });
 
   it("requires a key and at least two scenarios", async () => {

@@ -9,10 +9,14 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import type { RecommendationResponse } from "@fidt/contracts";
+import type {
+  RecommendationRequest,
+  RecommendationResponse,
+  ReviewResponse
+} from "@fidt/contracts";
 import { Badge, ErrorState, LoadingState } from "../components/Ui";
 import { api } from "../lib/api";
-import { date } from "../lib/format";
+import { date, dateTime } from "../lib/format";
 
 const labelNames: Record<string, string> = {
   CLIENT_FACT: "Client fact",
@@ -23,6 +27,8 @@ const labelNames: Record<string, string> = {
   AI_SUGGESTION: "AI suggestion"
 };
 
+type RecommendationAction = "generating" | "repairing" | "fallback" | "approving" | null;
+
 export function RecommendationPage() {
   const { householdId = "" } = useParams();
   const [search] = useSearchParams();
@@ -30,27 +36,44 @@ export function RecommendationPage() {
   const [rationale, setRationale] = useState("");
   const [data, setData] = useState<RecommendationResponse | null>(null);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [action, setAction] = useState<RecommendationAction>(null);
   const [attestation, setAttestation] = useState(false);
-  const [reviewed, setReviewed] = useState(false);
-  const generate = () => {
+  const [review, setReview] = useState<ReviewResponse | null>(null);
+  const generate = (
+    generationMode: RecommendationRequest["generationMode"] = "AI",
+    repairOfRecommendationId?: string
+  ) => {
     if (!runId) {
       setError("A scenario run is required before drafting a recommendation.");
       return;
     }
-    setLoading(true);
+    setAction(
+      generationMode === "DETERMINISTIC_FALLBACK"
+        ? "fallback"
+        : repairOfRecommendationId
+          ? "repairing"
+          : "generating"
+    );
     setError("");
     void api
-      .recommend(householdId, runId, rationale)
-      .then(setData)
+      .recommend(householdId, {
+        runId,
+        generationMode,
+        ...(rationale ? { advisorRationale: rationale } : {}),
+        ...(repairOfRecommendationId ? { repairOfRecommendationId } : {})
+      })
+      .then((response) => {
+        setData(response);
+        setAttestation(false);
+      })
       .catch((reason: unknown) =>
         setError(reason instanceof Error ? reason.message : "Unknown error")
       )
-      .finally(() => setLoading(false));
+      .finally(() => setAction(null));
   };
   const approve = () => {
     if (!data) return;
-    setLoading(true);
+    setAction("approving");
     void api
       .review(data.recommendation.id, {
         decision: "APPROVE",
@@ -58,14 +81,16 @@ export function RecommendationPage() {
           "I reviewed the cited evidence, deterministic calculations, alternatives, assumptions, risks, and disclosed conflicts.",
         attestation
       })
-      .then(() => setReviewed(true))
+      .then(setReview)
       .catch((reason: unknown) =>
         setError(reason instanceof Error ? reason.message : "Unknown error")
       )
-      .finally(() => setLoading(false));
+      .finally(() => setAction(null));
   };
 
-  if (loading && !data) return <LoadingState label="Drafting from approved evidence…" />;
+  if (action === "generating" && !data) {
+    return <LoadingState label="Drafting from approved evidence…" />;
+  }
   return (
     <>
       <section className="hero-row compact">
@@ -109,7 +134,7 @@ export function RecommendationPage() {
             />
             <div className="draft-controls">
               <span>{rationale.length} / 2,000</span>
-              <button className="button primary" onClick={generate}>
+              <button className="button primary" onClick={() => generate()}>
                 Generate governed draft
                 <Sparkles size={16} />
               </button>
@@ -122,7 +147,10 @@ export function RecommendationPage() {
           attestation={attestation}
           setAttestation={setAttestation}
           approve={approve}
-          reviewed={reviewed}
+          review={review}
+          action={action}
+          repair={() => generate("AI", data.recommendation.id)}
+          useFallback={() => generate("DETERMINISTIC_FALLBACK", data.recommendation.id)}
         />
       )}
       {error ? <ErrorState message={error} /> : null}
@@ -135,13 +163,19 @@ function RecommendationView({
   attestation,
   setAttestation,
   approve,
-  reviewed
+  review,
+  action,
+  repair,
+  useFallback
 }: {
   data: RecommendationResponse;
   attestation: boolean;
   setAttestation: (value: boolean) => void;
   approve: () => void;
-  reviewed: boolean;
+  review: ReviewResponse | null;
+  action: RecommendationAction;
+  repair: () => void;
+  useFallback: () => void;
 }) {
   const { recommendation, compliance } = data;
   return (
@@ -235,6 +269,27 @@ function RecommendationView({
               <span>{reason.message}</span>
             </div>
           ))}
+          {compliance.status !== "APPROVE" ? (
+            <div className="repair-controls">
+              <p>The draft cannot be approved until every blocking control passes.</p>
+              <button className="button primary full" onClick={repair} disabled={action !== null}>
+                <Sparkles size={15} />
+                {action === "repairing"
+                  ? "Repairing draft…"
+                  : "Regenerate with compliance feedback"}
+              </button>
+              <button
+                className="button secondary full"
+                onClick={useFallback}
+                disabled={action !== null}
+              >
+                <LockKeyhole size={15} />
+                {action === "fallback"
+                  ? "Preparing governed fallback…"
+                  : "Use governed deterministic fallback"}
+              </button>
+            </div>
+          ) : null}
         </article>
         <article className="panel citation-card">
           <div className="panel-heading">
@@ -264,25 +319,43 @@ function RecommendationView({
           ))}
         </article>
         <article className="panel attestation-card">
-          <label>
-            <input
-              type="checkbox"
-              checked={attestation}
-              onChange={(event) => setAttestation(event.target.checked)}
-            />
-            <span>
-              I reviewed the evidence, assumptions, calculations, alternatives, risks, and
-              compensation conflicts. I remain responsible for the recommendation.
-            </span>
-          </label>
-          <button
-            className="button primary full"
-            disabled={!attestation || compliance.status === "REQUIRE_CHANGES" || reviewed}
-            onClick={approve}
-          >
-            {reviewed ? "Review recorded" : "Record human approval"}
-            <FileCheck2 size={16} />
-          </button>
+          {review ? (
+            <div className="approval-confirmation" role="status">
+              <CheckCircle2 />
+              <span className="eyebrow">Human approval recorded</span>
+              <strong>Elena Morgan, CFP®</strong>
+              <p>{dateTime(review.reviewedAt)}</p>
+              <Link
+                className="button primary full"
+                to={`/households/${recommendation.householdId}/audit?event=${encodeURIComponent(review.auditEventId)}`}
+              >
+                View verified audit trail
+                <FileCheck2 size={16} />
+              </Link>
+            </div>
+          ) : (
+            <>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={attestation}
+                  onChange={(event) => setAttestation(event.target.checked)}
+                />
+                <span>
+                  I reviewed the evidence, assumptions, calculations, alternatives, risks, and
+                  compensation conflicts. I remain responsible for the recommendation.
+                </span>
+              </label>
+              <button
+                className="button primary full"
+                disabled={!attestation || compliance.status !== "APPROVE" || action !== null}
+                onClick={approve}
+              >
+                {action === "approving" ? "Recording approval…" : "Record human approval"}
+                <FileCheck2 size={16} />
+              </button>
+            </>
+          )}
         </article>
       </aside>
     </section>

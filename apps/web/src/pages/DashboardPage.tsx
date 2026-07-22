@@ -100,7 +100,7 @@ export function DashboardPage() {
                 </div>
                 <Link
                   className="round-link"
-                  to={`/households/${event.householdId}/compare`}
+                  to={`/households/${event.householdId}/compare?event=${encodeURIComponent(event.id)}`}
                   aria-label={`Review ${event.title}`}
                 >
                   <ArrowRight size={18} />

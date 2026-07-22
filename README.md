@@ -11,7 +11,9 @@ This is a production-shaped demonstration, not financial advice. The included Pa
 - A recommendation statement is labeled as client fact, calculation, external fact, assumption, advisor judgment, or AI suggestion.
 - Public data has a source URL, observation date, retrieval date, and staleness state.
 - The policy engine blocks guarantees, broken evidence, stale cited public facts, missing alternatives, and undisclosed conflicts.
-- Every approval remains a human action; the database stores it in an append-only SHA-256 hash chain.
+- The API rejects approval unless the stored policy result is `APPROVE` and the advisor attests.
+- Failed drafts can be regenerated with stored compliance feedback or replaced by the governed deterministic fallback.
+- Every approval remains a human action; the database stores it in an append-only SHA-256 hash chain that the API recomputes on every audit read.
 - The app remains functional without an LLM key by using a deterministic recommendation template.
 
 ## Product workflow
@@ -19,15 +21,20 @@ This is a production-shaped demonstration, not financial advice. The included Pa
 ```mermaid
 flowchart LR
   A["Synthetic household facts"] --> B["Versioned digital twin"]
+  X["Decision event"] --> B
   L["Treasury · BLS · FHFA · SEC"] --> B
   B --> C["Deterministic decision engines"]
   C --> D["Scenario comparison"]
   D --> E["AI explanation or deterministic fallback"]
   E --> F["Fiduciary policy gate"]
+  F -->|"Requires changes"| R["Governed repair"]
+  R --> F
   F --> G["Human advisor attestation"]
+  G --> I["Backend approval gate"]
   D --> H["Append-only audit chain"]
   E --> H
-  G --> H
+  F --> H
+  I --> H
 ```
 
 ## Stack

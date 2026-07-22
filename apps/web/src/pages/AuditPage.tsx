@@ -1,20 +1,22 @@
 import { CheckCircle2, Fingerprint, Link2, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
-import type { AuditEventDto } from "@fidt/contracts";
+import { useParams, useSearchParams } from "react-router-dom";
+import type { AuditResponse } from "@fidt/contracts";
 import { Badge, ErrorState, LoadingState } from "../components/Ui";
 import { api } from "../lib/api";
 import { date } from "../lib/format";
 
 export function AuditPage() {
   const { householdId = "" } = useParams();
-  const [events, setEvents] = useState<readonly AuditEventDto[] | null>(null);
+  const [search] = useSearchParams();
+  const highlightedEventId = search.get("event");
+  const [data, setData] = useState<AuditResponse | null>(null);
   const [error, setError] = useState("");
   const load = () => {
     setError("");
     void api
       .audit(householdId)
-      .then((data) => setEvents(data.events))
+      .then(setData)
       .catch((reason: unknown) =>
         setError(reason instanceof Error ? reason.message : "Unknown error")
       );
@@ -22,13 +24,14 @@ export function AuditPage() {
   useEffect(() => {
     void api
       .audit(householdId)
-      .then((data) => setEvents(data.events))
+      .then(setData)
       .catch((reason: unknown) =>
         setError(reason instanceof Error ? reason.message : "Unknown error")
       );
   }, [householdId]);
   if (error) return <ErrorState message={error} retry={load} />;
-  if (!events) return <LoadingState label="Verifying the audit chain…" />;
+  if (!data) return <LoadingState label="Verifying the audit chain…" />;
+  const { events, verification } = data;
   return (
     <>
       <section className="hero-row compact">
@@ -56,8 +59,11 @@ export function AuditPage() {
         </article>
         <article className="metric-card">
           <span>Chain status</span>
-          <strong>{events.length ? "Linked" : "Ready"}</strong>
-          <small>Previous-hash continuity</small>
+          <strong>{verification.status === "EMPTY" ? "Ready" : verification.status}</strong>
+          <small>
+            {verification.verifiedEvents} of {verification.totalEvents} events cryptographically
+            verified
+          </small>
         </article>
         <article className="metric-card">
           <span>Human approvals</span>
@@ -73,15 +79,19 @@ export function AuditPage() {
             <span className="eyebrow">Chronological ledger</span>
             <h2>Decision lineage</h2>
           </div>
-          <Badge tone="good">
+          <Badge tone={verification.status === "FAILED" ? "danger" : "good"}>
             <CheckCircle2 size={13} />
-            Immutable
+            {verification.status === "FAILED" ? "Chain failure" : "Hash chain verified"}
           </Badge>
         </div>
         {events.length ? (
           <div className="audit-list">
             {events.map((event, index) => (
-              <div className="audit-row" key={event.id}>
+              <div
+                className={`audit-row ${event.id === highlightedEventId ? "audit-row-highlighted" : ""}`}
+                id={`audit-${event.id}`}
+                key={event.id}
+              >
                 <div className="chain-rail">
                   <span>
                     <Fingerprint />

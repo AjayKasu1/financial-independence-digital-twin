@@ -1119,15 +1119,24 @@ h3,
   line-height: 1.5;
   margin: 14px 0 0;
 }
-.timeline-list > div {
+.timeline-link {
   display: grid;
-  grid-template-columns: 10px 1fr auto;
+  grid-template-columns: 10px 1fr auto 16px;
+  align-items: center;
   gap: 12px;
   padding: 10px 0;
   border-top: 1px solid #e9ebe7;
+  color: inherit;
 }
-.timeline-list > div:first-child {
+.timeline-link:first-child {
   border-top: 0;
+}
+.timeline-link:hover strong,
+.timeline-link:hover .timeline-arrow {
+  color: var(--teal);
+}
+.timeline-arrow {
+  color: #9aa5a2;
 }
 .timeline-dot {
   width: 8px;
@@ -1276,6 +1285,29 @@ h3,
 .empty-comparison span svg {
   width: 15px;
 }
+.decision-trigger {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 15px;
+  padding: 13px 16px;
+  border: 1px solid #d5dfda;
+  border-radius: 12px;
+  background: #f4f7f3;
+}
+.decision-trigger > div {
+  display: grid;
+  gap: 3px;
+}
+.decision-trigger strong {
+  font-size: 11px;
+}
+.decision-trigger p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 8px;
+}
 .result-banner {
   background: var(--navy);
   color: #fff;
@@ -1412,6 +1444,12 @@ h3,
   font-size: 8px;
   line-height: 1.5;
   margin: 4px 0 0;
+}
+.conflict-banner .economics-explainer {
+  margin-top: 9px;
+  padding-top: 9px;
+  border-top: 1px solid rgba(128, 93, 33, 0.2);
+  font-weight: 700;
 }
 
 .back-link {
@@ -1615,6 +1653,19 @@ h3,
   font-size: 8px;
   line-height: 1.45;
 }
+.repair-controls {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #e8ebe7;
+}
+.repair-controls p {
+  margin: 0 0 2px;
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1.5;
+}
 .citation-card > div:not(.panel-heading) {
   display: grid;
   grid-template-columns: 29px 1fr 15px;
@@ -1649,6 +1700,28 @@ h3,
   margin-top: 2px;
   accent-color: var(--teal);
 }
+.approval-confirmation {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  text-align: center;
+}
+.approval-confirmation > svg {
+  width: 35px;
+  height: 35px;
+  padding: 8px;
+  border-radius: 50%;
+  color: var(--teal);
+  background: var(--teal-soft);
+}
+.approval-confirmation strong {
+  font-size: 11px;
+}
+.approval-confirmation p {
+  margin: 0 0 7px;
+  color: var(--muted);
+  font-size: 8px;
+}
 
 .audit-metrics {
   grid-template-columns: repeat(3, 1fr);
@@ -1663,6 +1736,14 @@ h3,
   display: grid;
   grid-template-columns: 36px 1fr;
   gap: 10px;
+}
+.audit-row-highlighted {
+  margin: 0 -10px 10px;
+  padding: 10px 10px 0;
+  border: 1px solid #9fc7bd;
+  border-radius: 11px;
+  background: #f0f8f5;
+  box-shadow: 0 8px 24px rgba(21, 117, 110, 0.09);
 }
 .chain-rail {
   display: flex;

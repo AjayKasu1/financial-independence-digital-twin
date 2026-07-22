@@ -204,7 +204,7 @@ export function AppShell() {
                       {notifications.slice(0, 4).map((notification) => (
                         <Link
                           key={notification.id}
-                          to={`/households/${notification.householdId}/compare`}
+                          to={`/households/${notification.householdId}/compare?event=${encodeURIComponent(notification.id)}`}
                           onClick={() => setOpenMenu(null)}
                         >
                           <span

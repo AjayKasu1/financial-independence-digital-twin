@@ -12,6 +12,7 @@ import {
   type HouseholdSnapshot,
   type ScenarioResult
 } from "@fidt/domain";
+import { auditEventHash } from "../governance";
 
 interface HouseholdRow {
   readonly id: string;
@@ -28,6 +29,7 @@ interface EventRow {
 interface ScenarioRunRow {
   readonly id: string;
   readonly household_id: string;
+  readonly trigger_event_id: string | null;
   readonly created_at: string;
   readonly scenarios_json: string;
   readonly conflicts_json: string;
@@ -36,6 +38,7 @@ interface ScenarioRunRow {
 interface RecommendationRow {
   readonly id: string;
   readonly household_id: string;
+  readonly run_id: string;
   readonly draft_json: string;
   readonly compliance_json: string;
 }
@@ -154,11 +157,12 @@ export class DatabaseRepository {
   async saveScenarioRun(run: ScenarioComparisonResponse): Promise<void> {
     await this.#db
       .prepare(
-        "INSERT INTO scenario_runs (id, household_id, created_at, assumptions_json, scenarios_json, conflicts_json) VALUES (?, ?, ?, ?, ?, ?)"
+        "INSERT INTO scenario_runs (id, household_id, trigger_event_id, created_at, assumptions_json, scenarios_json, conflicts_json) VALUES (?, ?, ?, ?, ?, ?, ?)"
       )
       .bind(
         run.runId,
         run.householdId,
+        run.triggerEventId ?? null,
         run.createdAt,
         JSON.stringify(run.scenarios[0]?.assumptions ?? {}),
         JSON.stringify(run.scenarios),
@@ -170,7 +174,7 @@ export class DatabaseRepository {
   async getScenarioRun(id: string): Promise<ScenarioComparisonResponse | null> {
     const row = await this.#db
       .prepare(
-        "SELECT id, household_id, created_at, scenarios_json, conflicts_json FROM scenario_runs WHERE id = ?"
+        "SELECT id, household_id, trigger_event_id, created_at, scenarios_json, conflicts_json FROM scenario_runs WHERE id = ?"
       )
       .bind(id)
       .first<ScenarioRunRow>();
@@ -178,6 +182,7 @@ export class DatabaseRepository {
     return {
       runId: row.id,
       householdId: row.household_id,
+      ...(row.trigger_event_id ? { triggerEventId: row.trigger_event_id } : {}),
       createdAt: row.created_at,
       scenarios: parseJson<ScenarioResult[]>(row.scenarios_json),
       conflicts: parseJson<ConflictFlag[]>(row.conflicts_json)
@@ -215,19 +220,22 @@ export class DatabaseRepository {
       .run();
   }
 
-  async getRecommendation(
-    id: string
-  ): Promise<{ recommendation: RecommendationDraft; compliance: ComplianceDecision } | null> {
+  async getRecommendation(id: string): Promise<{
+    recommendation: RecommendationDraft;
+    compliance: ComplianceDecision;
+    runId: string;
+  } | null> {
     const row = await this.#db
       .prepare(
-        "SELECT id, household_id, draft_json, compliance_json FROM recommendations WHERE id = ?"
+        "SELECT id, household_id, run_id, draft_json, compliance_json FROM recommendations WHERE id = ?"
       )
       .bind(id)
       .first<RecommendationRow>();
     if (!row) return null;
     return {
       recommendation: parseJson<RecommendationDraft>(row.draft_json),
-      compliance: parseJson<ComplianceDecision>(row.compliance_json)
+      compliance: parseJson<ComplianceDecision>(row.compliance_json),
+      runId: row.run_id
     };
   }
 
@@ -281,13 +289,13 @@ export class DatabaseRepository {
       .first<{ event_hash: string }>();
     const previousHash = previous?.event_hash ?? null;
     const id = crypto.randomUUID();
-    const canonical = JSON.stringify({
+    const auditEvent = {
       id,
       ...input,
       occurredAt,
       previousHash
-    });
-    const eventHash = await sha256(canonical);
+    };
+    const eventHash = await auditEventHash(auditEvent);
     await this.#db
       .prepare(
         "INSERT INTO audit_events (id, household_id, actor_type, actor_id, action, entity_type, entity_id, occurred_at, metadata_json, previous_hash, event_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
@@ -306,7 +314,7 @@ export class DatabaseRepository {
         eventHash
       )
       .run();
-    return { id, ...input, occurredAt, previousHash, eventHash };
+    return { ...auditEvent, eventHash };
   }
 
   async listAudit(householdId: string): Promise<readonly AuditEventDto[]> {
@@ -334,9 +342,4 @@ export class DatabaseRepository {
 
 function parseJson<T>(value: string): T {
   return JSON.parse(value) as T;
-}
-
-async function sha256(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }

@@ -1,6 +1,7 @@
 import {
   recommendationDraftSchema,
   type Citation,
+  type ComplianceDecision,
   type RecommendationDraft
 } from "@fidt/contracts";
 import type { ConflictFlag, HouseholdSnapshot, ScenarioResult } from "@fidt/domain";
@@ -14,6 +15,7 @@ export interface RecommendationContext {
   readonly conflicts: readonly ConflictFlag[];
   readonly citations: readonly Citation[];
   readonly advisorRationale?: string;
+  readonly complianceFeedback?: Pick<ComplianceDecision, "status" | "reasons" | "requiredActions">;
   readonly now?: Date;
 }
 
@@ -31,6 +33,7 @@ export interface OpenRouterOptions {
 }
 
 interface OpenRouterResponse {
+  readonly model?: string;
   readonly choices?: readonly {
     readonly message?: { readonly content?: MessageContent };
   }[];
@@ -99,7 +102,7 @@ export class OpenRouterRecommendationGenerator implements RecommendationGenerato
       scenarioIds: context.scenarios.map((scenario) => scenario.id),
       citations: context.citations,
       conflictsDisclosed: context.conflicts.map((conflict) => conflict.message),
-      modelId: this.#options.model,
+      modelId: payload.model?.trim() || this.#options.model,
       promptVersion: PROMPT_VERSION,
       generatedBy: "OPENROUTER"
     });
@@ -196,6 +199,7 @@ Never calculate, estimate, or change a numeric value. Use only values in scenari
 Every factual or calculated statement must cite an allowed citation id and calculated claims must include a calculationRefs path.
 Label each statement as CLIENT_FACT, DETERMINISTIC_CALCULATION, EXTERNAL_FACT, PLANNING_ASSUMPTION, ADVISOR_JUDGMENT, or AI_SUGGESTION.
 Discuss reasonable alternatives and disclosed conflicts. Do not promise outcomes or use guarantee, risk-free, cannot-lose, or no-downside language.
+When complianceFeedback is present, repair every cited issue and required action without inventing facts, citations, or calculations.
 Output these fields only: recommendedScenarioId, headline, executiveSummary, statements, alternativesConsidered, missingInformation.`;
 
 const RECOMMENDATION_OUTPUT_SCHEMA = {
@@ -274,6 +278,7 @@ function toPromptPayload(context: RecommendationContext): Record<string, unknown
     conflicts: context.conflicts,
     allowedCitations: context.citations,
     advisorRationale: context.advisorRationale ?? null,
+    complianceFeedback: context.complianceFeedback ?? null,
     promptVersion: PROMPT_VERSION
   };
 }

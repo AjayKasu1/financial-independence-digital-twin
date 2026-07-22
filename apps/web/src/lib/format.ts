@@ -24,3 +24,14 @@ export function date(value: string): string {
     timeZone: "UTC"
   }).format(new Date(value));
 }
+
+export function dateTime(value: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short"
+  }).format(new Date(value));
+}

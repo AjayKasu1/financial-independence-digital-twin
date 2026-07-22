@@ -184,7 +184,11 @@ export function HouseholdPage() {
           </div>
           <div className="timeline-list">
             {data.events.map((event) => (
-              <div key={event.id}>
+              <Link
+                className="timeline-link"
+                key={event.id}
+                to={`compare?event=${encodeURIComponent(event.id)}`}
+              >
                 <span className={`timeline-dot severity-${event.severity.toLowerCase()}`} />
                 <div>
                   <strong>{event.title}</strong>
@@ -192,7 +196,8 @@ export function HouseholdPage() {
                   <small>{date(event.occurredAt)}</small>
                 </div>
                 <Badge tone={event.severity === "HIGH" ? "danger" : "warn"}>{event.status}</Badge>
-              </div>
+                <ArrowRight className="timeline-arrow" size={15} />
+              </Link>
             ))}
           </div>
         </article>

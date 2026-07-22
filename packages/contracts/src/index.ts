@@ -90,6 +90,7 @@ export const strategyRequestSchema = z.object({
 
 export const scenarioComparisonRequestSchema = z.object({
   strategies: z.array(strategyRequestSchema).min(2).max(4),
+  triggerEventId: z.string().min(1).optional(),
   assumptions: z
     .object({
       inflationRate: z.number().finite().min(-0.05).max(0.2),
@@ -213,6 +214,7 @@ export interface HouseholdResponse {
 export interface ScenarioComparisonResponse {
   readonly runId: string;
   readonly householdId: string;
+  readonly triggerEventId?: string;
   readonly createdAt: string;
   readonly scenarios: readonly DomainScenarioResult[];
   readonly conflicts: readonly DomainConflictFlag[];
@@ -235,6 +237,30 @@ export interface AuditEventDto {
   readonly metadata: Readonly<Record<string, unknown>>;
   readonly previousHash: string | null;
   readonly eventHash: string;
+}
+
+export interface AuditChainVerification {
+  readonly status: "VERIFIED" | "FAILED" | "EMPTY";
+  readonly verifiedEvents: number;
+  readonly totalEvents: number;
+  readonly firstInvalidEventId?: string;
+  readonly verifiedAt: string;
+}
+
+export interface AuditResponse {
+  readonly householdId: string;
+  readonly events: readonly AuditEventDto[];
+  readonly verification: AuditChainVerification;
+}
+
+export interface ReviewResponse {
+  readonly id: string;
+  readonly recommendationId: string;
+  readonly decision: "APPROVE" | "REJECT" | "REQUEST_CHANGES";
+  readonly rationale: string;
+  readonly attestation: boolean;
+  readonly reviewedAt: string;
+  readonly auditEventId: string;
 }
 
 export interface LiveObservation {
@@ -264,8 +290,12 @@ export interface LiveDataResponse {
 
 export const recommendationRequestSchema = z.object({
   runId: z.string().min(1),
-  advisorRationale: z.string().max(2_000).optional()
+  advisorRationale: z.string().max(2_000).optional(),
+  generationMode: z.enum(["AI", "DETERMINISTIC_FALLBACK"]).default("AI"),
+  repairOfRecommendationId: z.string().min(1).optional()
 });
+
+export type RecommendationRequest = z.infer<typeof recommendationRequestSchema>;
 
 export const reviewRequestSchema = z.object({
   decision: z.enum(["APPROVE", "REJECT", "REQUEST_CHANGES"]),

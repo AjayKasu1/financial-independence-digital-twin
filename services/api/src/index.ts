@@ -1,4 +1,5 @@
 import {
+  type AuditResponse,
   type Citation,
   type DashboardHousehold,
   type DashboardResponse,
@@ -7,6 +8,7 @@ import {
   scenarioComparisonRequestSchema
 } from "@fidt/contracts";
 import {
+  createDeterministicRecommendation,
   OpenRouterRecommendationGenerator,
   ResilientRecommendationGenerator
 } from "@fidt/ai-orchestrator";
@@ -26,6 +28,7 @@ import { evaluateRecommendation } from "@fidt/policy-engine";
 import { Hono } from "hono";
 import { ZodError } from "zod";
 import { getLiveData } from "./live-data";
+import { approvalBlockReason, verifyAuditChain } from "./governance";
 import { authenticate, rateLimit, requestContext, securityHeaders } from "./middleware";
 import { DatabaseRepository } from "./repositories/database";
 import type { Bindings, Variables } from "./types";
@@ -116,6 +119,12 @@ app.post("/api/households/:householdId/scenarios", async (context) => {
   const repository = await repositoryFor(context.env);
   const household = await requireHousehold(repository, context.req.param("householdId"));
   const request = scenarioComparisonRequestSchema.parse(await context.req.json());
+  if (request.triggerEventId) {
+    const triggerEvent = (await repository.listEvents(household.id)).find(
+      (event) => event.id === request.triggerEventId
+    );
+    if (!triggerEvent) throw new HttpError(422, "Trigger event does not belong to this household");
+  }
   const assumptions: AssumptionSet = {
     ...demoAssumptions,
     inflationRate: request.assumptions?.inflationRate ?? demoAssumptions.inflationRate,
@@ -152,6 +161,7 @@ app.post("/api/households/:householdId/scenarios", async (context) => {
   const run = {
     runId: crypto.randomUUID(),
     householdId: household.id,
+    ...(request.triggerEventId ? { triggerEventId: request.triggerEventId } : {}),
     createdAt: new Date().toISOString(),
     scenarios,
     conflicts
@@ -166,7 +176,8 @@ app.post("/api/households/:householdId/scenarios", async (context) => {
     entityId: run.runId,
     metadata: {
       strategyTypes: scenarios.map((scenario) => scenario.strategy),
-      assumptionsId: assumptions.id
+      assumptionsId: assumptions.id,
+      triggerEventId: request.triggerEventId ?? null
     }
   });
   return context.json(run, 201);
@@ -178,6 +189,18 @@ app.post("/api/households/:householdId/recommendations", async (context) => {
   const request = recommendationRequestSchema.parse(await context.req.json());
   const run = await repository.getScenarioRun(request.runId);
   if (!run || run.householdId !== household.id) throw new HttpError(404, "Scenario run not found");
+  const repairSource = request.repairOfRecommendationId
+    ? await repository.getRecommendation(request.repairOfRecommendationId)
+    : null;
+  if (request.repairOfRecommendationId && !repairSource) {
+    throw new HttpError(404, "Recommendation to repair was not found");
+  }
+  if (
+    repairSource &&
+    (repairSource.recommendation.householdId !== household.id || repairSource.runId !== run.runId)
+  ) {
+    throw new HttpError(422, "Repair source must belong to the same household and scenario run");
+  }
   const liveData = await getLiveData(context.env.CACHE, {
     secUserAgent: context.env.SEC_USER_AGENT
   });
@@ -215,13 +238,26 @@ app.post("/api/households/:householdId/recommendations", async (context) => {
       })
     );
   });
-  const recommendation = await generator.generate({
+  const recommendationContext = {
     household,
     scenarios: run.scenarios,
     conflicts: run.conflicts,
     citations,
-    ...(request.advisorRationale ? { advisorRationale: request.advisorRationale } : {})
-  });
+    ...(request.advisorRationale ? { advisorRationale: request.advisorRationale } : {}),
+    ...(repairSource
+      ? {
+          complianceFeedback: {
+            status: repairSource.compliance.status,
+            reasons: repairSource.compliance.reasons,
+            requiredActions: repairSource.compliance.requiredActions
+          }
+        }
+      : {})
+  };
+  const recommendation =
+    request.generationMode === "DETERMINISTIC_FALLBACK"
+      ? createDeterministicRecommendation(recommendationContext)
+      : await generator.generate(recommendationContext);
   const compliance = evaluateRecommendation({
     recommendation,
     scenarios: run.scenarios,
@@ -230,7 +266,7 @@ app.post("/api/households/:householdId/recommendations", async (context) => {
   await repository.saveRecommendation(recommendation, compliance, run.runId);
   await repository.appendAudit({
     householdId: household.id,
-    actorType: "MODEL",
+    actorType: recommendation.generatedBy === "OPENROUTER" ? "MODEL" : "SYSTEM",
     actorId: recommendation.modelId,
     action: "RECOMMENDATION_DRAFTED",
     entityType: "recommendation",
@@ -238,7 +274,23 @@ app.post("/api/households/:householdId/recommendations", async (context) => {
     metadata: {
       promptVersion: recommendation.promptVersion,
       generatedBy: recommendation.generatedBy,
-      policyStatus: compliance.status
+      policyStatus: compliance.status,
+      generationMode: request.generationMode,
+      repairOfRecommendationId: request.repairOfRecommendationId ?? null
+    }
+  });
+  await repository.appendAudit({
+    householdId: household.id,
+    actorType: "SYSTEM",
+    actorId: compliance.policyVersion,
+    action: "COMPLIANCE_CHECK_COMPLETED",
+    entityType: "recommendation",
+    entityId: recommendation.id,
+    metadata: {
+      status: compliance.status,
+      reasonCodes: compliance.reasons.map((reason) => reason.code),
+      requiredActions: compliance.requiredActions,
+      repairOfRecommendationId: request.repairOfRecommendationId ?? null
     }
   });
   return context.json({ recommendation, compliance }, 201);
@@ -250,9 +302,8 @@ app.post("/api/recommendations/:recommendationId/review", async (context) => {
   const input = reviewRequestSchema.parse(await context.req.json());
   const stored = await repository.getRecommendation(recommendationId);
   if (!stored) throw new HttpError(404, "Recommendation not found");
-  if (input.decision === "APPROVE" && !input.attestation) {
-    throw new HttpError(422, "Approval requires the human-review attestation");
-  }
+  const blocked = approvalBlockReason(input.decision, input.attestation, stored.compliance.status);
+  if (blocked) throw new HttpError(409, blocked);
   const reviewId = crypto.randomUUID();
   const reviewedAt = new Date().toISOString();
   await repository.saveHumanReview({
@@ -265,7 +316,7 @@ app.post("/api/recommendations/:recommendationId/review", async (context) => {
     attestation: input.attestation,
     reviewedAt
   });
-  await repository.appendAudit({
+  const auditEvent = await repository.appendAudit({
     householdId: stored.recommendation.householdId,
     actorType: "USER",
     actorId: context.get("advisor").id,
@@ -274,16 +325,22 @@ app.post("/api/recommendations/:recommendationId/review", async (context) => {
     entityId: recommendationId,
     metadata: { reviewId, decision: input.decision, attestation: input.attestation }
   });
-  return context.json({ id: reviewId, recommendationId, ...input, reviewedAt }, 201);
+  return context.json(
+    { id: reviewId, recommendationId, ...input, reviewedAt, auditEventId: auditEvent.id },
+    201
+  );
 });
 
 app.get("/api/households/:householdId/audit", async (context) => {
   const repository = await repositoryFor(context.env);
   const household = await requireHousehold(repository, context.req.param("householdId"));
-  return context.json({
+  const events = await repository.listAudit(household.id);
+  const response: AuditResponse = {
     householdId: household.id,
-    events: await repository.listAudit(household.id)
-  });
+    events,
+    verification: await verifyAuditChain([...events].reverse())
+  };
+  return context.json(response);
 });
 
 app.notFound((context) =>

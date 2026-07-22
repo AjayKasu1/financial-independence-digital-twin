@@ -1,9 +1,11 @@
 import type {
-  AuditEventDto,
+  AuditResponse,
   DashboardResponse,
   HouseholdResponse,
   LiveDataResponse,
+  RecommendationRequest,
   RecommendationResponse,
+  ReviewResponse,
   ScenarioComparisonRequest,
   ScenarioComparisonResponse
 } from "@fidt/contracts";
@@ -47,18 +49,16 @@ export const api = {
       `/api/households/${encodeURIComponent(householdId)}/scenarios`,
       { method: "POST", body: JSON.stringify(input) }
     ),
-  recommend: (householdId: string, runId: string, advisorRationale?: string) =>
+  recommend: (householdId: string, input: RecommendationRequest) =>
     request<RecommendationResponse>(
       `/api/households/${encodeURIComponent(householdId)}/recommendations`,
       {
         method: "POST",
-        body: JSON.stringify({ runId, ...(advisorRationale ? { advisorRationale } : {}) })
+        body: JSON.stringify(input)
       }
     ),
   audit: (householdId: string) =>
-    request<{ householdId: string; events: readonly AuditEventDto[] }>(
-      `/api/households/${encodeURIComponent(householdId)}/audit`
-    ),
+    request<AuditResponse>(`/api/households/${encodeURIComponent(householdId)}/audit`),
   review: (
     recommendationId: string,
     input: {
@@ -67,8 +67,8 @@ export const api = {
       attestation: boolean;
     }
   ) =>
-    request<{ id: string; reviewedAt: string }>(
-      `/api/recommendations/${encodeURIComponent(recommendationId)}/review`,
-      { method: "POST", body: JSON.stringify(input) }
-    )
+    request<ReviewResponse>(`/api/recommendations/${encodeURIComponent(recommendationId)}/review`, {
+      method: "POST",
+      body: JSON.stringify(input)
+    })
 };
