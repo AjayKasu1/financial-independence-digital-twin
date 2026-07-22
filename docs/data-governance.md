@@ -26,7 +26,7 @@ The connector marks an observation stale after 45 days. Policy evaluates freshne
 
 ## LLM data boundary
 
-The browser never receives the model key. The prompt contains only the minimum household fields needed to explain the selected scenario, deterministic scenario output, allowed evidence, disclosed conflicts, and optional advisor rationale. The OpenRouter request asks providers to deny data collection and use zero-data-retention routing. Provider availability and policy can change, so production configuration must verify the selected provider’s current privacy terms.
+The browser never receives the model key. The prompt contains only the minimum household fields needed to explain the selected scenario, deterministic scenario output, allowed evidence, disclosed conflicts, and optional advisor rationale. Every OpenRouter request denies provider data collection. The synthetic-only `demo` environment may use a non-ZDR free endpoint; all other environments enforce zero-data-retention routing. Real client data is prohibited in demo mode. Provider availability and policy can change, so production configuration must verify the selected provider’s current privacy terms.
 
 ## Before real client use
 

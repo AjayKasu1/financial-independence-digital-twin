@@ -24,6 +24,7 @@ export interface RecommendationGenerator {
 export interface OpenRouterOptions {
   readonly apiKey: string;
   readonly model: string;
+  readonly requireZeroDataRetention?: boolean;
   readonly siteUrl?: string;
   readonly siteName?: string;
   readonly fetchImplementation?: typeof fetch;
@@ -61,7 +62,10 @@ export class OpenRouterRecommendationGenerator implements RecommendationGenerato
         model: this.#options.model,
         temperature: 0.1,
         response_format: { type: "json_object" },
-        provider: { data_collection: "deny", zdr: true },
+        provider: {
+          data_collection: "deny",
+          ...(this.#options.requireZeroDataRetention === false ? {} : { zdr: true })
+        },
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: JSON.stringify(toPromptPayload(context)) }

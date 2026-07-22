@@ -201,6 +201,7 @@ app.post("/api/households/:householdId/recommendations", async (context) => {
     ? new OpenRouterRecommendationGenerator({
         apiKey: context.env.OPENROUTER_API_KEY,
         model: context.env.OPENROUTER_MODEL ?? "openrouter/free",
+        requireZeroDataRetention: context.env.APP_ENV !== "demo",
         siteName: "FiduciaryOS Digital Twin",
         ...(context.env.APP_PUBLIC_URL ? { siteUrl: context.env.APP_PUBLIC_URL } : {})
       })

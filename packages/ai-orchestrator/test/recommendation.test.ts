@@ -119,6 +119,39 @@ describe("recommendation orchestration", () => {
     ).rejects.toThrow("JSON object");
   });
 
+  it("requires ZDR by default and relaxes it only when explicitly configured", async () => {
+    const providerPreferences: unknown[] = [];
+    const captureRequest: typeof fetch = (_input, init) => {
+      if (typeof init?.body !== "string") throw new TypeError("Expected a JSON request body");
+      const body = JSON.parse(init.body) as { provider?: unknown };
+      providerPreferences.push(body.provider);
+      return Promise.resolve(
+        new Response(JSON.stringify({ error: { message: "captured" } }), { status: 503 })
+      );
+    };
+
+    await expect(
+      new OpenRouterRecommendationGenerator({
+        apiKey: "test-key",
+        model: "test/model",
+        fetchImplementation: captureRequest
+      }).generate(context)
+    ).rejects.toThrow("captured");
+    await expect(
+      new OpenRouterRecommendationGenerator({
+        apiKey: "test-key",
+        model: "test/model",
+        requireZeroDataRetention: false,
+        fetchImplementation: captureRequest
+      }).generate(context)
+    ).rejects.toThrow("captured");
+
+    expect(providerPreferences).toEqual([
+      { data_collection: "deny", zdr: true },
+      { data_collection: "deny" }
+    ]);
+  });
+
   it("requires a key and at least two scenarios", async () => {
     expect(
       () => new OpenRouterRecommendationGenerator({ apiKey: " ", model: "test/model" })

@@ -36,7 +36,7 @@ flowchart LR
 - Cloudflare Worker with Hono
 - D1 for application/audit data, KV for cache and rate limits
 - R2 and Vectorize planned for the future evidence-document phase
-- OpenRouter-compatible recommendation orchestration with zero-data-retention routing requested
+- OpenRouter-compatible recommendation orchestration with production ZDR enforcement
 - Vitest, fast-check, ESLint, Prettier, GitHub Actions
 
 The production deployment is one Worker: `/api/*` runs the Hono API and Cloudflare static assets serve the SPA. This works on `workers.dev` without a custom domain.
@@ -65,6 +65,8 @@ cp services/api/.dev.vars.example services/api/.dev.vars
 ```
 
 Never expose `OPENROUTER_API_KEY` through `VITE_*`, browser code, logs, or committed files. Without the key, recommendation drafting uses the tested deterministic fallback. With a key, the Worker validates model output against a strict Zod contract and falls back safely on provider, JSON, or schema failure.
+
+`APP_ENV=demo` contains synthetic data only and may route to a free provider with provider data collection denied but without a ZDR endpoint requirement. Every other environment enforces ZDR. Never place real client data in demo mode.
 
 ## Verification
 
