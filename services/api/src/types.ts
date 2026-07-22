@@ -6,6 +6,7 @@ export interface Env {
   readonly APP_ENV: "development" | "demo" | "production";
   readonly OPENROUTER_API_KEY?: string;
   readonly OPENROUTER_MODEL?: string;
+  readonly PASSPORT_SIGNING_SECRET?: string;
   readonly APP_PUBLIC_URL?: string;
   readonly CF_ACCESS_TEAM_DOMAIN?: string;
   readonly CF_ACCESS_AUD?: string;

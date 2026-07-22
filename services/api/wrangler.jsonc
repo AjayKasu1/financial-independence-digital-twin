@@ -5,6 +5,7 @@
   "compatibility_date": "2026-07-22",
   "workers_dev": true,
   "observability": { "enabled": true },
+  "triggers": { "crons": ["0 */6 * * *"] },
   "assets": {
     "directory": "../../apps/web/dist",
     "binding": "ASSETS",
@@ -13,7 +14,7 @@
   },
   "vars": {
     "APP_ENV": "demo",
-    "OPENROUTER_MODEL": "openrouter/free",
+    "OPENROUTER_MODEL": "nvidia/nemotron-3-super-120b-a12b:free",
     "APP_PUBLIC_URL": "https://financial-independence-digital-twin.ajaykasu7.workers.dev",
     "SEC_USER_AGENT": "FiduciaryOS research demo contact@example.com"
   },

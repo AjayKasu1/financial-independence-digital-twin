@@ -2,6 +2,7 @@ import { calculateAnnualAdvisoryFee } from "./fees";
 import { calculateFiNumber, projectFinancialIndependence } from "./financial-independence";
 import type {
   AssumptionSet,
+  DecisionContext,
   FeeSchedule,
   HouseholdSnapshot,
   RentalStrategyInput,
@@ -25,6 +26,7 @@ interface StrategyEffects {
   readonly annualCashFlow: number;
   readonly clientTimeCost: number;
   readonly investableAssetsChange: number;
+  readonly capitalUse: ScenarioResult["capitalUse"];
   readonly risks: readonly ScenarioRisk[];
   readonly calculations: Readonly<Record<string, number | string | null>>;
 }
@@ -33,20 +35,24 @@ export function runScenarioComparison(
   household: HouseholdSnapshot,
   requests: readonly StrategyRequest[],
   assumptions: AssumptionSet,
-  feeSchedule: FeeSchedule
+  feeSchedule: FeeSchedule,
+  decisionContext?: DecisionContext
 ): ScenarioResult[] {
   if (requests.length < 2) throw new RangeError("At least two alternatives are required");
-  return requests.map((request) => runScenario(household, request, assumptions, feeSchedule));
+  return requests.map((request) =>
+    runScenario(household, request, assumptions, feeSchedule, decisionContext)
+  );
 }
 
 export function runScenario(
   household: HouseholdSnapshot,
   request: StrategyRequest,
   assumptions: AssumptionSet,
-  feeSchedule: FeeSchedule
+  feeSchedule: FeeSchedule,
+  decisionContext?: DecisionContext
 ): ScenarioResult {
   validateHousehold(household);
-  const effects = calculateStrategyEffects(household, request, assumptions);
+  const effects = calculateStrategyEffects(household, request, assumptions, decisionContext);
   const currentAge = Math.min(...household.members.map((member) => member.age));
   const fiProjection = projectFinancialIndependence({
     currentAge,
@@ -93,6 +99,30 @@ export function runScenario(
   const finalYear = fiProjection.timeline.at(-1);
   if (!finalYear) throw new Error("Scenario projection did not produce a final year");
 
+  const risks = [...effects.risks];
+  const constitution = decisionContext?.constitution;
+  if (
+    constitution &&
+    liquidProjection.successProbability < constitution.constraints.minimumFiSuccessProbability
+  ) {
+    risks.push({
+      code: "FI_SUCCESS_BELOW_CONSTITUTION",
+      severity: "HIGH",
+      message: `Modeled FI success is below the constitution minimum of ${round(constitution.constraints.minimumFiSuccessProbability * 100, 1)}%.`
+    });
+  }
+  if (
+    constitution &&
+    fiProjection.fiAge !== null &&
+    fiProjection.fiAge > constitution.constraints.targetFiAge
+  ) {
+    risks.push({
+      code: "FI_AGE_AFTER_CONSTITUTION_TARGET",
+      severity: "MEDIUM",
+      message: `Modeled FI age is later than the constitution target age of ${constitution.constraints.targetFiAge}.`
+    });
+  }
+
   return {
     id: `scenario-${request.type.toLowerCase()}-v${assumptions.version}`,
     strategy: request.type,
@@ -108,8 +138,9 @@ export function runScenario(
     cumulativeAdvisoryFees: toMoney(cumulativeAdvisoryFees),
     clientTimeCost: effects.clientTimeCost,
     investableAssetsChange: effects.investableAssetsChange,
+    capitalUse: effects.capitalUse,
     timeline: fiProjection.timeline,
-    risks: effects.risks,
+    risks,
     assumptions,
     calculations: {
       ...effects.calculations,
@@ -124,21 +155,34 @@ export function runScenario(
 function calculateStrategyEffects(
   household: HouseholdSnapshot,
   request: StrategyRequest,
-  assumptions: AssumptionSet
+  assumptions: AssumptionSet,
+  decisionContext?: DecisionContext
 ): StrategyEffects {
-  const base = householdBase(household, assumptions);
+  const base = householdBase(household, assumptions, decisionContext);
   if (request.type === "RENTAL") {
     if (!request.rental) throw new RangeError("Rental strategy inputs are required");
-    return rentalEffects(household, request.rental, assumptions, base);
+    return rentalEffects(household, request.rental, assumptions, base, decisionContext);
   }
   if (request.type === "PORTFOLIO") {
     if (!request.portfolio) throw new RangeError("Portfolio strategy inputs are required");
     const unmanaged = unmanagedAssetsFor(household);
+    const available = decisionContext?.decisionCapital ?? request.portfolio.initialInvestment;
+    if (decisionContext && Math.abs(request.portfolio.initialInvestment - available) > 0.01) {
+      throw new RangeError("Portfolio investment must equal the shared decision capital");
+    }
     return {
       ...base,
       label: "Invest in a diversified portfolio",
       portfolioReturn: portfolioExpectedReturn(request.portfolio, assumptions),
       investableAssetsChange: Math.min(unmanaged, request.portfolio.initialInvestment),
+      capitalUse: {
+        available,
+        required: available,
+        deployed: available,
+        residual: 0,
+        feasible: true,
+        affectedInputs: ["Decision capital"]
+      },
       calculations: {
         decisionCapital: request.portfolio.initialInvestment,
         equityAllocation: request.portfolio.equityAllocation,
@@ -150,7 +194,13 @@ function calculateStrategyEffects(
     if (!request.debt) throw new RangeError("Debt-paydown strategy inputs are required");
     const liability = household.liabilities.find((item) => item.id === request.debt?.liabilityId);
     if (!liability) throw new RangeError("The selected liability was not found");
-    const lumpSum = Math.min(request.debt.lumpSum, liability.balance, base.startingLiquidAssets);
+    const available = decisionContext?.decisionCapital ?? request.debt.lumpSum;
+    const lumpSum = Math.min(
+      request.debt.lumpSum,
+      liability.balance,
+      base.startingLiquidAssets,
+      available
+    );
     const annualInterestSaved = lumpSum * liability.annualRate;
     const managedReduction = Math.max(0, lumpSum - unmanagedAssetsFor(household));
     const risks = [...base.risks];
@@ -168,6 +218,14 @@ function calculateStrategyEffects(
       startingLiabilities: base.startingLiabilities - lumpSum,
       annualSavings: base.annualSavings + annualInterestSaved,
       investableAssetsChange: -managedReduction,
+      capitalUse: {
+        available,
+        required: Math.min(request.debt.lumpSum, liability.balance),
+        deployed: lumpSum,
+        residual: Math.max(0, available - lumpSum),
+        feasible: true,
+        affectedInputs: ["Decision capital", "Student-loan balance", "Student-loan rate"]
+      },
       risks,
       calculations: {
         lumpSum,
@@ -211,7 +269,18 @@ function calculateStrategyEffects(
     annualCashFlow: rental.firstYearCashFlow,
     clientTimeCost: scaledRental.hoursPerMonth * 12 * scaledRental.hourlyTimeValue,
     investableAssetsChange: investableChange,
-    risks: [...base.risks, ...rentalRisks(household, rental)],
+    capitalUse: {
+      available: decisionCapital,
+      required: totalInitialUse + portfolioCapital,
+      deployed: totalInitialUse + portfolioCapital,
+      residual: Math.max(0, decisionCapital - totalInitialUse - portfolioCapital),
+      feasible: totalInitialUse + portfolioCapital <= decisionCapital + 0.01,
+      affectedInputs: ["Decision capital", "Strategy allocation"]
+    },
+    risks: [
+      ...base.risks,
+      ...rentalRisks(household, rental, scaledRental.hoursPerMonth, decisionContext)
+    ],
     calculations: {
       decisionCapital,
       rentalCapital,
@@ -223,7 +292,11 @@ function calculateStrategyEffects(
   };
 }
 
-function householdBase(household: HouseholdSnapshot, assumptions: AssumptionSet): StrategyEffects {
+function householdBase(
+  household: HouseholdSnapshot,
+  assumptions: AssumptionSet,
+  decisionContext?: DecisionContext
+): StrategyEffects {
   const income = household.incomeSources.reduce((sum, source) => sum + source.annualAmount, 0);
   const annualSavings = Math.max(0, income - household.annualSpending);
   const holdingsValue = household.holdings.reduce((sum, holding) => sum + holding.marketValue, 0);
@@ -231,7 +304,9 @@ function householdBase(household: HouseholdSnapshot, assumptions: AssumptionSet)
     .filter((holding) => holding.assetClass === "EMPLOYER_STOCK")
     .reduce((sum, holding) => sum + holding.marketValue, 0);
   const risks: ScenarioRisk[] = [];
-  if (holdingsValue > 0 && employerStock / holdingsValue >= 0.25) {
+  const concentrationLimit =
+    decisionContext?.constitution.constraints.maxEmployerStockPercent ?? 0.25;
+  if (holdingsValue > 0 && employerStock / holdingsValue >= concentrationLimit) {
     risks.push({
       code: "EMPLOYER_STOCK_CONCENTRATION",
       severity: "HIGH",
@@ -257,6 +332,14 @@ function householdBase(household: HouseholdSnapshot, assumptions: AssumptionSet)
     annualCashFlow: 0,
     clientTimeCost: 0,
     investableAssetsChange: 0,
+    capitalUse: {
+      available: decisionContext?.decisionCapital ?? 0,
+      required: 0,
+      deployed: 0,
+      residual: decisionContext?.decisionCapital ?? 0,
+      feasible: true,
+      affectedInputs: []
+    },
     risks,
     calculations: {}
   };
@@ -266,10 +349,24 @@ function rentalEffects(
   household: HouseholdSnapshot,
   input: RentalStrategyInput,
   assumptions: AssumptionSet,
-  base: StrategyEffects
+  base: StrategyEffects,
+  decisionContext?: DecisionContext
 ): StrategyEffects {
   const rental = projectRental(input, assumptions.planningHorizonYears);
+  const available = decisionContext?.decisionCapital ?? rental.initialCashRequired;
+  const feasible = rental.initialCashRequired <= available + 0.01;
   const managedReduction = Math.max(0, rental.initialCashRequired - unmanagedAssetsFor(household));
+  const risks = [
+    ...base.risks,
+    ...rentalRisks(household, rental, input.hoursPerMonth, decisionContext)
+  ];
+  if (!feasible) {
+    risks.push({
+      code: "DECISION_CAPITAL_SHORTFALL",
+      severity: "HIGH",
+      message: `The rental requires $${Math.round(rental.initialCashRequired).toLocaleString("en-US")} but shared decision capital is $${Math.round(available).toLocaleString("en-US")}.`
+    });
+  }
   return {
     ...base,
     label: "Purchase and operate the rental property",
@@ -281,7 +378,20 @@ function rentalEffects(
     annualCashFlow: rental.firstYearCashFlow,
     clientTimeCost: input.hoursPerMonth * 12 * input.hourlyTimeValue,
     investableAssetsChange: -managedReduction,
-    risks: [...base.risks, ...rentalRisks(household, rental)],
+    capitalUse: {
+      available,
+      required: rental.initialCashRequired,
+      deployed: rental.initialCashRequired,
+      residual: Math.max(0, available - rental.initialCashRequired),
+      feasible,
+      affectedInputs: [
+        "Decision-capital feasibility",
+        "Purchase price",
+        "Market rent",
+        "Mortgage rate"
+      ]
+    },
+    risks,
     calculations: {
       initialCashRequired: rental.initialCashRequired,
       monthlyMortgagePayment: rental.monthlyMortgagePayment,
@@ -296,7 +406,9 @@ function rentalEffects(
 
 function rentalRisks(
   household: HouseholdSnapshot,
-  rental: ReturnType<typeof projectRental>
+  rental: ReturnType<typeof projectRental>,
+  monthlyHours: number,
+  decisionContext?: DecisionContext
 ): ScenarioRisk[] {
   const risks: ScenarioRisk[] = [];
   if (rental.firstYearCashFlow < 0) {
@@ -315,12 +427,24 @@ function rentalRisks(
   }
   if (
     rental.initialCashRequired >
-    liquidAssetsFor(household) - household.preferences.liquidityFloor
+    liquidAssetsFor(household) -
+      (decisionContext?.constitution.constraints.liquidityFloor ??
+        household.preferences.liquidityFloor)
   ) {
     risks.push({
       code: "LIQUIDITY_FLOOR",
       severity: "HIGH",
       message: "The acquisition would breach the household liquidity floor."
+    });
+  }
+  const maxHours =
+    decisionContext?.constitution.constraints.maxRealEstateHoursPerMonth ??
+    household.preferences.maxRealEstateHoursPerMonth;
+  if (monthlyHours > maxHours) {
+    risks.push({
+      code: "REAL_ESTATE_TIME_LIMIT",
+      severity: "HIGH",
+      message: `Rental workload exceeds the constitution limit of ${maxHours} hours per month.`
     });
   }
   return risks;

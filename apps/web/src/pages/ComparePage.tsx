@@ -3,13 +3,17 @@ import {
   ArrowRight,
   Calculator,
   CheckCircle2,
+  Fingerprint,
+  Gauge,
   Home,
+  ShieldCheck,
   Scale,
   TrendingUp
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import type {
+  ClientConstitution,
   FinancialEvent,
   ScenarioComparisonResponse,
   ScenarioComparisonRequest
@@ -44,19 +48,19 @@ function CompareWorkflow({
   const [rent, setRent] = useState(preset.rent);
   const [mortgageRate, setMortgageRate] = useState(preset.mortgageRate);
   const [triggerEvent, setTriggerEvent] = useState<FinancialEvent | null>(null);
+  const [constitution, setConstitution] = useState<ClientConstitution | null>(null);
   const [result, setResult] = useState<ScenarioComparisonResponse | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   useEffect(() => {
-    if (!triggerEventId) return;
-    void api
-      .household(householdId)
-      .then((data) =>
-        setTriggerEvent(data.events.find((event) => event.id === triggerEventId) ?? null)
-      );
+    void api.household(householdId).then((data) => {
+      setConstitution(data.clientConstitution);
+      setTriggerEvent(data.events.find((event) => event.id === triggerEventId) ?? null);
+    });
   }, [householdId, triggerEventId]);
   const request = useMemo<ScenarioComparisonRequest>(
     () => ({
+      decisionCapital: capital,
       ...(triggerEventId ? { triggerEventId } : {}),
       strategies: [
         {
@@ -152,28 +156,47 @@ function CompareWorkflow({
               <h2>Planning assumptions</h2>
             </div>
           </div>
+          <div className="input-scope shared">
+            <strong>Shared across every strategy</strong>
+            <span>Controls Portfolio funding, Debt capacity, and Rental feasibility.</span>
+          </div>
           <Input
             label="Decision capital"
+            hint="Affects all three alternatives"
             prefix="$"
             value={capital}
             onChange={setCapital}
             step={1000}
           />
+          <div className="input-scope rental-only">
+            <strong>Rental-only underwriting</strong>
+            <span>These values should change only the Rental scenario.</span>
+          </div>
           <Input
             label="Rental purchase price"
+            hint="Rental only"
             prefix="$"
             value={purchasePrice}
             onChange={setPurchasePrice}
             step={5000}
           />
-          <Input label="Monthly market rent" prefix="$" value={rent} onChange={setRent} step={50} />
+          <Input
+            label="Monthly market rent"
+            hint="Rental only"
+            prefix="$"
+            value={rent}
+            onChange={setRent}
+            step={50}
+          />
           <Input
             label="Mortgage rate"
+            hint="Rental only"
             suffix="%"
             value={mortgageRate}
             onChange={setMortgageRate}
             step={0.05}
           />
+          {constitution ? <ConstitutionCard constitution={constitution} /> : null}
           <div className="assumption-note">
             <AlertTriangle size={16} />
             <p>
@@ -226,9 +249,9 @@ function ScenarioResults({
   result: ScenarioComparisonResponse;
   householdId: string;
 }) {
-  const leading = [...result.scenarios].sort(
-    (a, b) => b.successProbability - a.successProbability
-  )[0];
+  const leading = [...result.scenarios]
+    .filter((scenario) => scenario.capitalUse.feasible)
+    .sort((a, b) => b.successProbability - a.successProbability)[0];
   return (
     <>
       <div className="result-banner">
@@ -281,6 +304,14 @@ function ScenarioResults({
             />
             <dl className="scenario-stats">
               <div>
+                <dt>{scenario.capitalUse.feasible ? "Shared capital used" : "Capital required"}</dt>
+                <dd>{fullCurrency.format(scenario.capitalUse.deployed)}</dd>
+              </div>
+              <div>
+                <dt>Capital remaining</dt>
+                <dd>{fullCurrency.format(scenario.capitalUse.residual)}</dd>
+              </div>
+              <div>
                 <dt>Modeled FI success</dt>
                 <dd>{percent.format(scenario.successProbability)}</dd>
               </div>
@@ -305,6 +336,17 @@ function ScenarioResults({
                 <dd>{fullCurrency.format(scenario.firstYearAdvisoryFee)}</dd>
               </div>
             </dl>
+            <div className={`capital-verdict ${scenario.capitalUse.feasible ? "pass" : "fail"}`}>
+              {scenario.capitalUse.feasible ? <CheckCircle2 /> : <AlertTriangle />}
+              <div>
+                <strong>
+                  {scenario.capitalUse.feasible
+                    ? "Within shared-capital constraint"
+                    : `Capital shortfall: ${fullCurrency.format(scenario.capitalUse.required - scenario.capitalUse.available)}`}
+                </strong>
+                <span>{scenario.capitalUse.affectedInputs.join(" · ")}</span>
+              </div>
+            </div>
             <div className="risk-stack">
               {scenario.risks.length ? (
                 scenario.risks.map((risk) => (
@@ -323,6 +365,7 @@ function ScenarioResults({
           </article>
         ))}
       </div>
+      {result.analysis ? <CounterfactualAnalysis analysis={result.analysis} /> : null}
       {result.conflicts.length ? (
         <div className="conflict-banner">
           <AlertTriangle />
@@ -362,6 +405,7 @@ function decisionPreset(eventId: string): {
 
 function Input({
   label,
+  hint,
   value,
   onChange,
   prefix,
@@ -369,6 +413,7 @@ function Input({
   step
 }: {
   label: string;
+  hint?: string;
   value: number;
   onChange: (value: number) => void;
   prefix?: string;
@@ -377,7 +422,10 @@ function Input({
 }) {
   return (
     <label className="input-group">
-      <span>{label}</span>
+      <span>
+        {label}
+        {hint ? <small>{hint}</small> : null}
+      </span>
       <div>
         {prefix ? <span>{prefix}</span> : null}
         <input
@@ -390,5 +438,107 @@ function Input({
         {suffix ? <span>{suffix}</span> : null}
       </div>
     </label>
+  );
+}
+
+function ConstitutionCard({ constitution }: { constitution: ClientConstitution }) {
+  return (
+    <div className="constitution-card">
+      <div>
+        <ShieldCheck size={17} />
+        <span>
+          <strong>Client Constitution v{constitution.version}</strong>
+          <small>Executable constraints locked to this run</small>
+        </span>
+      </div>
+      <dl>
+        <div>
+          <dt>Liquidity floor</dt>
+          <dd>{currency.format(constitution.constraints.liquidityFloor)}</dd>
+        </div>
+        <div>
+          <dt>Employer stock</dt>
+          <dd>≤ {percent.format(constitution.constraints.maxEmployerStockPercent)}</dd>
+        </div>
+        <div>
+          <dt>Property workload</dt>
+          <dd>≤ {constitution.constraints.maxRealEstateHoursPerMonth} hr/mo</dd>
+        </div>
+        <div>
+          <dt>FI objective</dt>
+          <dd>
+            Age {constitution.constraints.targetFiAge} · ≥{" "}
+            {percent.format(constitution.constraints.minimumFiSuccessProbability)}
+          </dd>
+        </div>
+      </dl>
+    </div>
+  );
+}
+
+function CounterfactualAnalysis({
+  analysis
+}: {
+  analysis: NonNullable<ScenarioComparisonResponse["analysis"]>;
+}) {
+  return (
+    <section className="counterfactual-panel panel">
+      <header>
+        <div>
+          <span className="eyebrow coral">Counterfactual decision boundaries</span>
+          <h2>What would have to change?</h2>
+          <p>{analysis.definition}</p>
+        </div>
+        <Fingerprint />
+      </header>
+      <div className="boundary-grid">
+        <article>
+          <Gauge />
+          <span>Mortgage crossover</span>
+          <strong>
+            {analysis.breakEvenMortgageRate === null
+              ? "No crossover ≤ 20%"
+              : `≤ ${percent.format(analysis.breakEvenMortgageRate)}`}
+          </strong>
+          <small>Rental matches {analysis.targetScenarioLabel}</small>
+        </article>
+        <article>
+          <Home />
+          <span>Market-rent crossover</span>
+          <strong>
+            {analysis.breakEvenMonthlyRent === null
+              ? "No modeled crossover"
+              : `≥ ${fullCurrency.format(analysis.breakEvenMonthlyRent)}/mo`}
+          </strong>
+          <small>Same assumptions and FI success threshold</small>
+        </article>
+        <article>
+          <Scale />
+          <span>Capital-feasible price</span>
+          <strong>≤ {fullCurrency.format(analysis.maxAffordablePurchasePrice)}</strong>
+          <small>Down payment plus closing costs fit shared capital</small>
+        </article>
+      </div>
+      <div className="sensitivity-section">
+        <div>
+          <strong>3 × 3 sensitivity surface</strong>
+          <span>Annual rental cash flow as rate and rent move</span>
+        </div>
+        <div className="sensitivity-grid">
+          {analysis.sensitivity.map((cell) => (
+            <div
+              className={cell.rentalLeads ? "sensitivity-cell leads" : "sensitivity-cell"}
+              key={`${cell.mortgageRate}-${cell.monthlyRent}`}
+            >
+              <small>
+                {percent.format(cell.mortgageRate)} · {currency.format(cell.monthlyRent)} rent
+              </small>
+              <strong>{fullCurrency.format(cell.annualCashFlow)}</strong>
+              <span>{cell.rentalLeads ? "Rental leads" : "Alternative leads"}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }

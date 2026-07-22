@@ -1,4 +1,5 @@
 {
+  "decisionCapital": 147000,
   "strategies": [
     {
       "type": "RENTAL",

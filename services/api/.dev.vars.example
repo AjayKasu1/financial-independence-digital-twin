@@ -1,6 +1,7 @@
 # Local secrets only. Copy to .dev.vars; never commit the real file.
 OPENROUTER_API_KEY=
-OPENROUTER_MODEL=openrouter/free
+OPENROUTER_MODEL=nvidia/nemotron-3-super-120b-a12b:free
+PASSPORT_SIGNING_SECRET=
 
 # Required only when APP_ENV=production.
 CF_ACCESS_TEAM_DOMAIN=your-team.cloudflareaccess.com

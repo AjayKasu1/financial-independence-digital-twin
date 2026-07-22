@@ -325,12 +325,20 @@ function RecommendationView({
               <span className="eyebrow">Human approval recorded</span>
               <strong>Elena Morgan, CFP®</strong>
               <p>{dateTime(review.reviewedAt)}</p>
+              {review.passportId ? (
+                <Link
+                  className="button primary full"
+                  to={`/households/${recommendation.householdId}/passports/${encodeURIComponent(review.passportId)}`}
+                >
+                  Open signed Decision Passport
+                  <FileCheck2 size={16} />
+                </Link>
+              ) : null}
               <Link
-                className="button primary full"
+                className="button secondary full"
                 to={`/households/${recommendation.householdId}/audit?event=${encodeURIComponent(review.auditEventId)}`}
               >
                 View verified audit trail
-                <FileCheck2 size={16} />
               </Link>
             </div>
           ) : (

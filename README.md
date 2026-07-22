@@ -8,12 +8,17 @@ This is a production-shaped demonstration, not financial advice. The included Pa
 
 - Financial calculations are deterministic TypeScript—not LLM-generated math.
 - Rental, portfolio, debt-paydown, fee, conflict, and FI outcomes use the same versioned assumptions.
+- One shared decision-capital constraint is enforced across every alternative; infeasible strategies cannot be recommended or approved.
+- The Decision Lab calculates deterministic mortgage/rent crossover boundaries, capital feasibility, and a 3 × 3 sensitivity surface.
+- A versioned Client Constitution turns liquidity, concentration, workload, FI-age, and modeled-success preferences into executable controls.
 - A recommendation statement is labeled as client fact, calculation, external fact, assumption, advisor judgment, or AI suggestion.
 - Public data has a source URL, observation date, retrieval date, and staleness state.
 - The policy engine blocks guarantees, broken evidence, stale cited public facts, missing alternatives, and undisclosed conflicts.
 - The API rejects approval unless the stored policy result is `APPROVE` and the advisor attests.
 - Failed drafts can be regenerated with stored compliance feedback or replaced by the governed deterministic fallback.
 - Every approval remains a human action; the database stores it in an append-only SHA-256 hash chain that the API recomputes on every audit read.
+- Every approved recommendation receives an immutable HMAC-signed Decision Passport with its evidence, calculations, conflicts, constitution, and validity envelope.
+- A six-hour monitor rechecks public-data retrieval, household constraints, and counterfactual boundaries. Material breaches invalidate advice permanently until a new reviewed passport is issued.
 - The app remains functional without an LLM key by using a deterministic recommendation template.
 
 ## Product workflow
@@ -35,6 +40,9 @@ flowchart LR
   E --> H
   F --> H
   I --> H
+  I --> P["Signed Decision Passport"]
+  P --> V["Live validity monitor"]
+  V -->|"Boundary breached"| X["Invalidate and reopen review"]
 ```
 
 ## Stack
@@ -110,6 +118,7 @@ The sample API payload is at [`examples/scenario-request.json`](examples/scenari
 
    ```bash
    npx wrangler secret put OPENROUTER_API_KEY
+   npx wrangler secret put PASSPORT_SIGNING_SECRET
    npx wrangler secret put CF_ACCESS_AUD
    npx wrangler secret put CF_ACCESS_TEAM_DOMAIN
    ```
@@ -136,7 +145,7 @@ Keep the API contracts and deterministic packages unchanged. See [`docs/architec
 
 ## Current boundaries
 
-Included: synthetic household planning, FI projection, rental underwriting, seeded portfolio simulations, debt comparison, fee conflicts, live public observations, governed recommendations, human review, and audit lineage.
+Included: synthetic household planning, shared-capital enforcement, executable client constraints, deterministic counterfactual boundaries, FI projection, rental underwriting, seeded portfolio simulations, debt comparison, fee conflicts, live public observations, governed recommendations, human review, signed Decision Passports, scheduled validity monitoring, automatic invalidation, and audit lineage.
 
 Not included: brokerage connectivity, trading, individualized tax/legal advice, document OCR, multi-tenant billing, custodian write access, or production RIA books and records certification.
 

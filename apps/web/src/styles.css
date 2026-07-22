@@ -1202,6 +1202,74 @@ h3,
   font-weight: 600;
   color: var(--muted);
 }
+.input-group > span small {
+  display: block;
+  margin-top: 2px;
+  color: #92a09d;
+  font-size: 7px;
+  font-weight: 500;
+}
+.input-scope {
+  display: grid;
+  gap: 2px;
+  margin: 14px 0 7px;
+  padding: 9px 10px;
+  border-radius: 9px;
+}
+.input-scope strong {
+  font-size: 9px;
+}
+.input-scope span {
+  font-size: 7px;
+  line-height: 1.4;
+}
+.input-scope.shared {
+  color: var(--teal);
+  background: var(--teal-soft);
+}
+.input-scope.rental-only {
+  color: #a55244;
+  background: var(--coral-soft);
+}
+.constitution-card {
+  margin: 16px 0;
+  padding: 11px;
+  border: 1px solid #c8d9d3;
+  border-radius: 10px;
+  background: #f2f8f5;
+}
+.constitution-card > div {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  color: var(--teal);
+}
+.constitution-card > div span {
+  display: grid;
+  gap: 2px;
+}
+.constitution-card strong {
+  font-size: 9px;
+}
+.constitution-card small {
+  color: var(--muted);
+  font-size: 7px;
+}
+.constitution-card dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+  margin: 11px 0 0;
+}
+.constitution-card dt {
+  color: var(--muted);
+  font-size: 7px;
+}
+.constitution-card dd {
+  margin: 2px 0 0;
+  font-size: 8px;
+  font-weight: 700;
+}
 .input-group > div {
   display: flex;
   align-items: center;
@@ -1398,6 +1466,336 @@ h3,
   font-size: 10px;
   font-weight: 700;
   margin: 3px 0 0;
+}
+.capital-verdict {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 9px 0;
+  padding: 8px;
+  border-radius: 8px;
+}
+.capital-verdict.pass {
+  color: var(--teal);
+  background: var(--teal-soft);
+}
+.capital-verdict.fail {
+  color: #9e463b;
+  background: var(--coral-soft);
+}
+.capital-verdict > svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.capital-verdict > div {
+  display: grid;
+  gap: 2px;
+}
+.capital-verdict strong {
+  font-size: 8px;
+}
+.capital-verdict span {
+  font-size: 7px;
+  line-height: 1.4;
+}
+.counterfactual-panel {
+  margin-top: 14px;
+  padding: 18px;
+}
+.counterfactual-panel > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+}
+.counterfactual-panel > header h2 {
+  margin: 5px 0;
+  font-size: 17px;
+}
+.counterfactual-panel > header p,
+.sensitivity-section > div:first-child span {
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1.5;
+}
+.counterfactual-panel > header > svg {
+  color: var(--coral);
+  width: 30px;
+  height: 30px;
+}
+.boundary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 14px;
+}
+.boundary-grid article {
+  display: grid;
+  gap: 4px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f8f7f2;
+}
+.boundary-grid svg {
+  width: 17px;
+  color: var(--teal);
+}
+.boundary-grid span,
+.boundary-grid small {
+  color: var(--muted);
+  font-size: 7px;
+}
+.boundary-grid strong {
+  font-size: 12px;
+}
+.sensitivity-section {
+  margin-top: 16px;
+  padding-top: 15px;
+  border-top: 1px solid var(--line);
+}
+.sensitivity-section > div:first-child {
+  display: grid;
+  gap: 2px;
+  margin-bottom: 9px;
+  font-size: 9px;
+}
+.sensitivity-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.sensitivity-cell {
+  display: grid;
+  gap: 3px;
+  padding: 9px;
+  border: 1px solid #e0e4df;
+  border-radius: 8px;
+  background: #fff;
+}
+.sensitivity-cell.leads {
+  border-color: #9ccdc3;
+  background: var(--teal-soft);
+}
+.sensitivity-cell small,
+.sensitivity-cell span {
+  color: var(--muted);
+  font-size: 7px;
+}
+.sensitivity-cell strong {
+  font-size: 9px;
+}
+
+.passport-status {
+  min-width: 235px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 15px;
+  border-radius: 13px;
+  border: 1px solid #bcd8cf;
+  background: #edf8f4;
+  color: var(--teal);
+}
+.passport-status.status-invalidated {
+  border-color: #e5b5ad;
+  background: var(--coral-soft);
+  color: var(--red);
+}
+.passport-status.status-review_required {
+  border-color: #e9d19a;
+  background: var(--gold-soft);
+  color: #8b631e;
+}
+.passport-status > svg {
+  width: 31px;
+  height: 31px;
+}
+.passport-status > div {
+  display: grid;
+  gap: 4px;
+}
+.passport-status strong {
+  font-size: 9px;
+}
+.passport-status span {
+  font-size: 7px;
+}
+.passport-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 25px;
+  margin-bottom: 14px;
+}
+.passport-summary h2 {
+  margin: 5px 0;
+  font-size: 18px;
+}
+.passport-summary p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 8px;
+}
+.passport-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  min-width: 360px;
+}
+.passport-metrics > div {
+  display: grid;
+  gap: 2px;
+  padding: 9px 11px;
+  border-radius: 8px;
+  background: #f2f3ee;
+}
+.passport-metrics span {
+  color: var(--muted);
+  font-size: 7px;
+}
+.passport-metrics strong {
+  font-size: 10px;
+}
+.passport-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 14px;
+  align-items: start;
+}
+.validity-panel > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 12px;
+}
+.validity-panel h2,
+.proof-card h2,
+.constitution-proof h2 {
+  margin: 4px 0;
+}
+.condition-list {
+  display: grid;
+}
+.condition-row {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 145px;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+.condition-state {
+  width: 27px;
+  height: 27px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #8b631e;
+  background: var(--gold-soft);
+}
+.condition-state.pass {
+  color: var(--teal);
+  background: var(--teal-soft);
+}
+.condition-state.fail {
+  color: var(--red);
+  background: var(--coral-soft);
+}
+.condition-state svg {
+  width: 14px;
+}
+.condition-row > div:nth-child(2) strong {
+  font-size: 9px;
+}
+.condition-row p {
+  margin: 3px 0;
+  color: var(--muted);
+  font-size: 7px;
+  line-height: 1.45;
+}
+.condition-row small {
+  color: #8a9996;
+  font-size: 6px;
+  text-transform: lowercase;
+}
+.condition-row > div:last-child {
+  display: grid;
+  gap: 2px;
+  text-align: right;
+}
+.condition-row > div:last-child span {
+  color: var(--muted);
+  font-size: 7px;
+}
+.condition-row > div:last-child strong {
+  font-size: 10px;
+}
+.passport-invalidation {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 9px;
+  color: var(--red);
+  background: var(--coral-soft);
+}
+.passport-invalidation svg {
+  flex: none;
+}
+.passport-invalidation strong {
+  font-size: 9px;
+}
+.passport-invalidation p {
+  margin: 4px 0 0;
+  font-size: 7px;
+}
+.passport-side {
+  display: grid;
+  gap: 12px;
+}
+.proof-card,
+.constitution-proof,
+.lineage-card {
+  display: grid;
+  gap: 6px;
+}
+.proof-card > svg,
+.constitution-proof > svg,
+.lineage-card > svg {
+  color: var(--teal);
+}
+.proof-card dl {
+  margin: 7px 0;
+}
+.proof-card dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px solid var(--line);
+}
+.proof-card dt,
+.proof-card dd,
+.proof-card small,
+.constitution-proof p,
+.constitution-proof span,
+.lineage-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 7px;
+}
+.proof-card code {
+  font-size: 7px;
+}
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 .risk-stack {
   display: grid;
@@ -1877,6 +2275,12 @@ h3,
   .review-column {
     grid-template-columns: repeat(3, 1fr);
   }
+  .passport-layout {
+    grid-template-columns: 1fr;
+  }
+  .passport-side {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }
 
 @media (max-width: 820px) {
@@ -1925,6 +2329,19 @@ h3,
   .advisor-name {
     display: none;
   }
+  .passport-summary {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .passport-metrics {
+    min-width: 0;
+  }
+  .passport-side {
+    grid-template-columns: 1fr;
+  }
+  .boundary-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 560px) {
@@ -1958,6 +2375,20 @@ h3,
   .scenario-card header,
   .scenario-card .risk-stack {
     grid-column: auto;
+  }
+  .sensitivity-grid {
+    grid-template-columns: 1fr;
+  }
+  .condition-row {
+    grid-template-columns: 30px 1fr;
+  }
+  .condition-row > div:last-child {
+    grid-column: 2;
+    text-align: left;
+  }
+  .validity-panel > header {
+    align-items: stretch;
+    flex-direction: column;
   }
   .result-banner {
     align-items: stretch;

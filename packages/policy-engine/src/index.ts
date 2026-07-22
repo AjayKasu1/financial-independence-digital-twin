@@ -5,7 +5,7 @@ import type {
 } from "@fidt/contracts";
 import type { ConflictFlag, ScenarioResult } from "@fidt/domain";
 
-export const POLICY_VERSION = "fiduciary-policy-1.0.0";
+export const POLICY_VERSION = "fiduciary-policy-1.1.0";
 
 export interface PolicyEvaluationInput {
   readonly recommendation: RecommendationDraft;
@@ -85,6 +85,14 @@ export function evaluateRecommendation(input: PolicyEvaluationInput): Compliance
     });
     requiredActions.add("Select a scenario from the reviewed deterministic comparison.");
   } else {
+    if (!recommendedScenario.capitalUse.feasible) {
+      reasons.push({
+        code: "CAPITAL_INFEASIBLE_RECOMMENDATION",
+        severity: "BLOCKING",
+        message: "The recommended scenario requires more capital than the shared decision pool."
+      });
+      requiredActions.add("Select a scenario that fits the locked shared-capital constraint.");
+    }
     const highRisks = recommendedScenario.risks.filter((risk) => risk.severity === "HIGH");
     if (highRisks.length > 0) {
       reasons.push({

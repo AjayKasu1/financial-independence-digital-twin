@@ -107,6 +107,31 @@ export interface HouseholdPreferences {
   readonly values: readonly string[];
 }
 
+export interface ClientConstitution {
+  readonly id: string;
+  readonly householdId: string;
+  readonly version: number;
+  readonly effectiveAt: IsoDate;
+  readonly approvedBy: string;
+  readonly constraints: {
+    readonly liquidityFloor: number;
+    readonly maxEmployerStockPercent: number;
+    readonly maxRealEstateHoursPerMonth: number;
+    readonly targetFiAge: number;
+    readonly minimumFiSuccessProbability: number;
+  };
+  readonly preferences: {
+    readonly riskTolerance: HouseholdPreferences["riskTolerance"];
+    readonly realEstateInterest: HouseholdPreferences["realEstateInterest"];
+    readonly values: readonly string[];
+  };
+}
+
+export interface DecisionContext {
+  readonly decisionCapital: number;
+  readonly constitution: ClientConstitution;
+}
+
 export interface HouseholdSnapshot {
   readonly id: string;
   readonly name: string;
@@ -241,10 +266,45 @@ export interface ScenarioResult {
   readonly cumulativeAdvisoryFees: number;
   readonly clientTimeCost: number;
   readonly investableAssetsChange: number;
+  readonly capitalUse: {
+    readonly available: number;
+    readonly required: number;
+    readonly deployed: number;
+    readonly residual: number;
+    readonly feasible: boolean;
+    readonly affectedInputs: readonly string[];
+  };
   readonly timeline: readonly YearProjection[];
   readonly risks: readonly ScenarioRisk[];
   readonly assumptions: AssumptionSet;
   readonly calculations: Readonly<Record<string, number | string | null>>;
+}
+
+export interface DecisionSensitivityCell {
+  readonly mortgageRate: number;
+  readonly monthlyRent: number;
+  readonly annualCashFlow: number;
+  readonly rentalSuccessProbability: number;
+  readonly rentalLeads: boolean;
+}
+
+export interface DecisionAnalysis {
+  readonly targetScenarioId: string;
+  readonly targetScenarioLabel: string;
+  readonly targetSuccessProbability: number;
+  readonly rentalScenarioId: string;
+  readonly rentalSuccessProbability: number;
+  readonly rentalSnapshot: {
+    readonly purchasePrice: number;
+    readonly monthlyRent: number;
+    readonly mortgageRate: number;
+    readonly hoursPerMonth: number;
+  };
+  readonly breakEvenMortgageRate: number | null;
+  readonly breakEvenMonthlyRent: number | null;
+  readonly maxAffordablePurchasePrice: number;
+  readonly sensitivity: readonly DecisionSensitivityCell[];
+  readonly definition: string;
 }
 
 export interface FeeTier {

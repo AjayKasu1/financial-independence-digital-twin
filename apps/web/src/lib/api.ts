@@ -1,6 +1,7 @@
 import type {
   AuditResponse,
   DashboardResponse,
+  DecisionPassportResponse,
   HouseholdResponse,
   LiveDataResponse,
   RecommendationRequest,
@@ -70,5 +71,12 @@ export const api = {
     request<ReviewResponse>(`/api/recommendations/${encodeURIComponent(recommendationId)}/review`, {
       method: "POST",
       body: JSON.stringify(input)
+    }),
+  passport: (passportId: string) =>
+    request<DecisionPassportResponse>(`/api/passports/${encodeURIComponent(passportId)}`),
+  monitorPassport: (passportId: string) =>
+    request<DecisionPassportResponse>(`/api/passports/${encodeURIComponent(passportId)}/monitor`, {
+      method: "POST",
+      body: JSON.stringify({})
     })
 };

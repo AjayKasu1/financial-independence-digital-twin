@@ -2,14 +2,16 @@
 
 ## Data classes
 
-| Class              | Demo behavior                                | Production control                                            |
-| ------------------ | -------------------------------------------- | ------------------------------------------------------------- |
-| Household data     | Synthetic only                               | Minimize fields, encrypt, tenant scope, retention policy      |
-| Calculation output | Versioned and reproducible                   | Immutable assumptions, engine version, test evidence          |
-| Public facts       | URL, observation/retrieval dates, stale flag | Refresh SLA and source-specific validation                    |
-| Advisor judgment   | Explicit statement label                     | Named author, timestamp, human review                         |
-| AI suggestion      | Explicit statement label                     | Prompt/model version, schema validation, no autonomous action |
-| Audit data         | Append-only hash chain                       | Restricted access and external immutable backup               |
+| Class               | Demo behavior                                   | Production control                                             |
+| ------------------- | ----------------------------------------------- | -------------------------------------------------------------- |
+| Household data      | Synthetic only                                  | Minimize fields, encrypt, tenant scope, retention policy       |
+| Calculation output  | Versioned and reproducible                      | Immutable assumptions, engine version, test evidence           |
+| Public facts        | URL, observation/retrieval dates, stale flag    | Refresh SLA and source-specific validation                     |
+| Advisor judgment    | Explicit statement label                        | Named author, timestamp, human review                          |
+| AI suggestion       | Explicit statement label                        | Prompt/model version, schema validation, no autonomous action  |
+| Audit data          | Append-only hash chain                          | Restricted access and external immutable backup                |
+| Client Constitution | Versioned synthetic preferences and constraints | Dual approval, effective dating, change rationale              |
+| Decision Passport   | Immutable signed payload plus monitored state   | Asymmetric/KMS signing, key rotation, independent verification |
 
 ## Public connectors
 
@@ -22,7 +24,11 @@ The demo checks SEC connectivity with a reference issuer but does not attach tha
 
 ## Staleness
 
-The connector marks an observation stale after 45 days. Policy evaluates freshness only when a statement actually cites a public observation. Monthly data may need a series-specific release-date policy before production; the global threshold is intentionally conservative for the demo.
+The connector retains both the economic observation date and retrieval timestamp. Recommendation policy evaluates observation age only when a statement actually cites that fact. Passport monitoring evaluates retrieval freshness, preventing a current monthly release from being mistaken for an unavailable feed merely because its observation period began earlier. Production should add source-specific release calendars.
+
+## Decision Passport integrity
+
+The signed payload contains no mutable monitoring state. It locks the scenario run, Client Constitution, evidence ids, calculation references, policy/model versions, conflicts, alternatives, human-review audit event, and validity envelope. Demo verification uses an HMAC key held only by the Worker. A production deployment should use an asymmetric key in managed KMS/HSM, publish the verification key, rotate by `keyId`, and retain retired public keys for historical verification.
 
 ## LLM data boundary
 

@@ -1,6 +1,8 @@
 import { z } from "zod";
 import type {
+  ClientConstitution as DomainClientConstitution,
   ConflictFlag as DomainConflictFlag,
+  DecisionAnalysis as DomainDecisionAnalysis,
   FinancialEvent as DomainFinancialEvent,
   HouseholdSnapshot as DomainHouseholdSnapshot,
   ScenarioResult as DomainScenarioResult
@@ -8,6 +10,7 @@ import type {
 
 export type {
   AssumptionSet,
+  ClientConstitution,
   ConflictFlag,
   FactCategory,
   FeeSchedule,
@@ -88,26 +91,46 @@ export const strategyRequestSchema = z.object({
   mixed: mixedStrategySchema.optional()
 });
 
-export const scenarioComparisonRequestSchema = z.object({
-  strategies: z.array(strategyRequestSchema).min(2).max(4),
-  triggerEventId: z.string().min(1).optional(),
-  assumptions: z
-    .object({
-      inflationRate: z.number().finite().min(-0.05).max(0.2),
-      withdrawalRate: z.number().finite().positive().max(0.2),
-      equityReturnMean: z.number().finite().min(-0.5).max(0.5),
-      equityVolatility: rate,
-      bondReturnMean: z.number().finite().min(-0.5).max(0.5),
-      bondVolatility: rate,
-      cashReturn: z.number().finite().min(-0.1).max(0.25),
-      taxDrag: rate,
-      planningHorizonYears: z.number().int().min(5).max(60),
-      simulationPaths: z.number().int().min(100).max(10_000),
-      seed: z.number().int().min(0)
-    })
-    .partial()
-    .optional()
-});
+export const scenarioComparisonRequestSchema = z
+  .object({
+    decisionCapital: z.number().finite().positive().max(100_000_000),
+    strategies: z.array(strategyRequestSchema).min(2).max(4),
+    triggerEventId: z.string().min(1).optional(),
+    assumptions: z
+      .object({
+        inflationRate: z.number().finite().min(-0.05).max(0.2),
+        withdrawalRate: z.number().finite().positive().max(0.2),
+        equityReturnMean: z.number().finite().min(-0.5).max(0.5),
+        equityVolatility: rate,
+        bondReturnMean: z.number().finite().min(-0.5).max(0.5),
+        bondVolatility: rate,
+        cashReturn: z.number().finite().min(-0.1).max(0.25),
+        taxDrag: rate,
+        planningHorizonYears: z.number().int().min(5).max(60),
+        simulationPaths: z.number().int().min(100).max(10_000),
+        seed: z.number().int().min(0)
+      })
+      .partial()
+      .optional()
+  })
+  .superRefine((value, context) => {
+    const portfolio = value.strategies.find((strategy) => strategy.type === "PORTFOLIO")?.portfolio;
+    if (portfolio && Math.abs(portfolio.initialInvestment - value.decisionCapital) > 0.01) {
+      context.addIssue({
+        code: "custom",
+        path: ["strategies"],
+        message: "Portfolio initial investment must equal shared decision capital"
+      });
+    }
+    const debt = value.strategies.find((strategy) => strategy.type === "DEBT_PAYDOWN")?.debt;
+    if (debt && debt.lumpSum > value.decisionCapital) {
+      context.addIssue({
+        code: "custom",
+        path: ["strategies"],
+        message: "Debt paydown cannot exceed shared decision capital"
+      });
+    }
+  });
 
 export type ScenarioComparisonRequest = z.infer<typeof scenarioComparisonRequestSchema>;
 
@@ -207,6 +230,7 @@ export interface DashboardResponse {
 
 export interface HouseholdResponse {
   readonly household: DomainHouseholdSnapshot;
+  readonly clientConstitution: DomainClientConstitution;
   readonly events: readonly DomainFinancialEvent[];
   readonly latestScenarios: readonly DomainScenarioResult[];
 }
@@ -216,6 +240,9 @@ export interface ScenarioComparisonResponse {
   readonly householdId: string;
   readonly triggerEventId?: string;
   readonly createdAt: string;
+  readonly decisionCapital: number;
+  readonly clientConstitution: DomainClientConstitution;
+  readonly analysis: DomainDecisionAnalysis | null;
   readonly scenarios: readonly DomainScenarioResult[];
   readonly conflicts: readonly DomainConflictFlag[];
 }
@@ -261,7 +288,122 @@ export interface ReviewResponse {
   readonly attestation: boolean;
   readonly reviewedAt: string;
   readonly auditEventId: string;
+  readonly passportId?: string;
+  readonly passportStatus?: DecisionPassportStatus;
 }
+
+export type DecisionPassportStatus = "VALID" | "REVIEW_REQUIRED" | "INVALIDATED";
+
+export type ValidityMetric =
+  | "MORTGAGE_RATE"
+  | "MONTHLY_RENT"
+  | "PURCHASE_PRICE"
+  | "LIQUID_ASSETS"
+  | "EMPLOYER_STOCK_PERCENT"
+  | "REAL_ESTATE_HOURS"
+  | "FI_SUCCESS_PROBABILITY"
+  | "FI_AGE"
+  | "PUBLIC_DATA_AGE_DAYS";
+
+export interface ValidityCondition {
+  readonly id: string;
+  readonly metric: ValidityMetric;
+  readonly label: string;
+  readonly operator: "LTE" | "GTE";
+  readonly threshold: number;
+  readonly baselineValue: number;
+  readonly unit: "CURRENCY" | "RATE" | "NUMBER" | "HOURS" | "DAYS";
+  readonly source: "LIVE_PUBLIC_PROXY" | "CLIENT_SNAPSHOT" | "DETERMINISTIC_CALCULATION";
+  readonly rationale: string;
+}
+
+export interface DecisionPassportPayload {
+  readonly schemaVersion: "1.0";
+  readonly id: string;
+  readonly householdId: string;
+  readonly recommendationId: string;
+  readonly runId: string;
+  readonly issuedAt: string;
+  readonly triggerEventId?: string;
+  readonly recommendedScenario: {
+    readonly id: string;
+    readonly strategy: string;
+    readonly label: string;
+    readonly successProbability: number;
+    readonly fiAge: number | null;
+    readonly firstYearAdvisoryFee: number;
+  };
+  readonly constitution: DomainClientConstitution;
+  readonly decisionCapital: number;
+  readonly alternativesConsidered: readonly string[];
+  readonly conflictsDisclosed: readonly string[];
+  readonly validityEnvelope: readonly ValidityCondition[];
+  readonly evidenceIds: readonly string[];
+  readonly calculationRefs: readonly string[];
+  readonly policyVersion: string;
+  readonly modelId: string;
+  readonly auditReviewEventId: string;
+}
+
+export interface DecisionPassportProof {
+  readonly algorithm: "HMAC-SHA-256";
+  readonly keyId: "fidt-passport-v1";
+  readonly contentHash: string;
+  readonly signature: string;
+}
+
+export interface PassportConditionResult {
+  readonly conditionId: string;
+  readonly metric: ValidityMetric;
+  readonly actualValue: number | null;
+  readonly passed: boolean | null;
+  readonly observedAt: string;
+  readonly source: string;
+}
+
+export interface PassportValidityCheck {
+  readonly id: string;
+  readonly checkedAt: string;
+  readonly statusBefore: DecisionPassportStatus;
+  readonly statusAfter: DecisionPassportStatus;
+  readonly results: readonly PassportConditionResult[];
+  readonly reasons: readonly string[];
+}
+
+export interface DecisionPassportResponse {
+  readonly passport: DecisionPassportPayload;
+  readonly proof: DecisionPassportProof;
+  readonly state: {
+    readonly status: DecisionPassportStatus;
+    readonly lastCheckedAt: string | null;
+    readonly invalidatedAt: string | null;
+    readonly invalidationReasons: readonly string[];
+  };
+  readonly verification: {
+    readonly verified: boolean;
+    readonly verifiedAt: string;
+  };
+  readonly checks: readonly PassportValidityCheck[];
+}
+
+export const passportMonitorRequestSchema = z.object({
+  observations: z
+    .record(
+      z.enum([
+        "MORTGAGE_RATE",
+        "MONTHLY_RENT",
+        "PURCHASE_PRICE",
+        "LIQUID_ASSETS",
+        "EMPLOYER_STOCK_PERCENT",
+        "REAL_ESTATE_HOURS",
+        "FI_SUCCESS_PROBABILITY",
+        "FI_AGE",
+        "PUBLIC_DATA_AGE_DAYS"
+      ]),
+      z.number().finite()
+    )
+    .optional()
+});
 
 export interface LiveObservation {
   readonly source: string;

@@ -138,6 +138,25 @@ describe("fiduciary policy engine", () => {
     expect(result.reasons.some((reason) => reason.code === "HIGH_RISK_RECOMMENDATION")).toBe(true);
   });
 
+  it("blocks a recommendation that exceeds shared decision capital", () => {
+    const recommended = scenarios.find((scenario) => scenario.id === valid.recommendedScenarioId)!;
+    const constrained = scenarios.map((scenario) =>
+      scenario.id === recommended.id
+        ? { ...scenario, capitalUse: { ...scenario.capitalUse, feasible: false } }
+        : scenario
+    );
+    const result = evaluateRecommendation({
+      recommendation: valid,
+      scenarios: constrained,
+      conflicts: [],
+      now
+    });
+    expect(result.status).toBe("REQUIRE_CHANGES");
+    expect(
+      result.reasons.some((reason) => reason.code === "CAPITAL_INFEASIBLE_RECOMMENDATION")
+    ).toBe(true);
+  });
+
   it("requires calculation traceability and known scenarios", () => {
     const result = evaluateRecommendation({
       recommendation: {

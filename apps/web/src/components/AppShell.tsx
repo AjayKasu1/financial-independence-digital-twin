@@ -74,9 +74,11 @@ export function AppShell() {
       item.end ? location.pathname === item.to : location.pathname.startsWith(item.to)
     )
     .sort((left, right) => right.to.length - left.to.length)[0]?.label;
-  const title = location.pathname.includes("/recommendation")
-    ? "Recommendation studio"
-    : navigationTitle;
+  const title = location.pathname.includes("/passports/")
+    ? "Decision Passport"
+    : location.pathname.includes("/recommendation")
+      ? "Recommendation studio"
+      : navigationTitle;
 
   return (
     <div className="app-shell">

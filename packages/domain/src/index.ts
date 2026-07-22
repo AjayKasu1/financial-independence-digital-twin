@@ -1,5 +1,6 @@
 export * from "./fees";
 export * from "./demo-data";
+export * from "./decision-analysis";
 export * from "./financial-independence";
 export * from "./models";
 export * from "./money";

@@ -1,13 +1,19 @@
 import type {
   AuditEventDto,
   ComplianceDecision,
+  DecisionPassportPayload,
+  DecisionPassportProof,
+  DecisionPassportStatus,
+  PassportValidityCheck,
   RecommendationDraft,
   ScenarioComparisonResponse
 } from "@fidt/contracts";
 import {
+  demoClientConstitution,
   demoEvents,
   demoHousehold,
   type ConflictFlag,
+  type ClientConstitution,
   type FinancialEvent,
   type HouseholdSnapshot,
   type ScenarioResult
@@ -33,6 +39,47 @@ interface ScenarioRunRow {
   readonly created_at: string;
   readonly scenarios_json: string;
   readonly conflicts_json: string;
+  readonly decision_capital_cents: number | null;
+  readonly constitution_json: string | null;
+  readonly analysis_json: string | null;
+}
+
+interface ConstitutionRow {
+  readonly constitution_json: string;
+}
+
+interface PassportRow {
+  readonly id: string;
+  readonly passport_json: string;
+  readonly content_hash: string;
+  readonly signature: string;
+  readonly algorithm: DecisionPassportProof["algorithm"];
+  readonly key_id: DecisionPassportProof["keyId"];
+  readonly status: DecisionPassportStatus;
+  readonly last_checked_at: string | null;
+  readonly invalidated_at: string | null;
+  readonly invalidation_reasons_json: string;
+}
+
+interface PassportCheckRow {
+  readonly id: string;
+  readonly checked_at: string;
+  readonly status_before: DecisionPassportStatus;
+  readonly status_after: DecisionPassportStatus;
+  readonly results_json: string;
+  readonly reasons_json: string;
+}
+
+export interface StoredDecisionPassport {
+  readonly passport: DecisionPassportPayload;
+  readonly proof: DecisionPassportProof;
+  readonly state: {
+    readonly status: DecisionPassportStatus;
+    readonly lastCheckedAt: string | null;
+    readonly invalidatedAt: string | null;
+    readonly invalidationReasons: readonly string[];
+  };
+  readonly checks: readonly PassportValidityCheck[];
 }
 
 interface RecommendationRow {
@@ -69,55 +116,70 @@ export class DatabaseRepository {
       .prepare("SELECT id FROM households WHERE id = ?")
       .bind(demoHousehold.id)
       .first<{ id: string }>();
-    if (row) return;
     const now = new Date().toISOString();
-    const statements: D1PreparedStatement[] = [
-      this.#db
-        .prepare(
-          "INSERT OR IGNORE INTO households (id, name, advisor_name, snapshot_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
-        )
-        .bind(
-          demoHousehold.id,
-          demoHousehold.name,
-          "Elena Morgan, CFP®",
-          JSON.stringify(demoHousehold),
-          now,
-          now
-        )
-    ];
-    for (const event of demoEvents) {
+    const statements: D1PreparedStatement[] = [];
+    if (!row) {
       statements.push(
         this.#db
           .prepare(
-            "INSERT OR IGNORE INTO financial_events (id, household_id, event_type, severity, status, occurred_at, payload_json) VALUES (?, ?, ?, ?, ?, ?, ?)"
+            "INSERT OR IGNORE INTO households (id, name, advisor_name, snapshot_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
           )
           .bind(
-            event.id,
-            event.householdId,
-            event.type,
-            event.severity,
-            event.status,
-            event.occurredAt,
-            JSON.stringify(event)
+            demoHousehold.id,
+            demoHousehold.name,
+            "Elena Morgan, CFP®",
+            JSON.stringify(demoHousehold),
+            now,
+            now
+          )
+      );
+      for (const event of demoEvents) {
+        statements.push(
+          this.#db
+            .prepare(
+              "INSERT OR IGNORE INTO financial_events (id, household_id, event_type, severity, status, occurred_at, payload_json) VALUES (?, ?, ?, ?, ?, ?, ?)"
+            )
+            .bind(
+              event.id,
+              event.householdId,
+              event.type,
+              event.severity,
+              event.status,
+              event.occurredAt,
+              JSON.stringify(event)
+            )
+        );
+      }
+      statements.push(
+        this.#db
+          .prepare(
+            "INSERT OR IGNORE INTO source_facts (id, household_id, category, field_path, value_json, source_id, source_type, observed_at, recorded_at, confidence) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+          )
+          .bind(
+            "fact-annual-spending",
+            demoHousehold.id,
+            "CLIENT_FACT",
+            "annualSpending",
+            JSON.stringify(demoHousehold.annualSpending),
+            "synthetic-demo-onboarding",
+            "SANDBOX",
+            demoHousehold.asOf,
+            now,
+            1
           )
       );
     }
     statements.push(
       this.#db
         .prepare(
-          "INSERT OR IGNORE INTO source_facts (id, household_id, category, field_path, value_json, source_id, source_type, observed_at, recorded_at, confidence) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+          "INSERT OR IGNORE INTO client_constitutions (id, household_id, version, effective_at, constitution_json) VALUES (?, ?, ?, ?, ?)"
         )
         .bind(
-          "fact-annual-spending",
+          demoClientConstitution.id,
           demoHousehold.id,
-          "CLIENT_FACT",
-          "annualSpending",
-          JSON.stringify(demoHousehold.annualSpending),
-          "synthetic-demo-onboarding",
-          "SANDBOX",
-          demoHousehold.asOf,
-          now,
-          1
+          demoClientConstitution.version,
+          demoClientConstitution.effectiveAt,
+          JSON.stringify(demoClientConstitution)
         )
     );
     await this.#db.batch(statements);
@@ -140,6 +202,18 @@ export class DatabaseRepository {
     return result.results;
   }
 
+  async getCurrentConstitution(householdId: string): Promise<ClientConstitution> {
+    const row = await this.#db
+      .prepare(
+        "SELECT constitution_json FROM client_constitutions WHERE household_id = ? ORDER BY version DESC LIMIT 1"
+      )
+      .bind(householdId)
+      .first<ConstitutionRow>();
+    return row
+      ? parseJson<ClientConstitution>(row.constitution_json)
+      : { ...demoClientConstitution, householdId };
+  }
+
   async listEvents(householdId?: string): Promise<readonly FinancialEvent[]> {
     const statement = householdId
       ? this.#db
@@ -157,7 +231,7 @@ export class DatabaseRepository {
   async saveScenarioRun(run: ScenarioComparisonResponse): Promise<void> {
     await this.#db
       .prepare(
-        "INSERT INTO scenario_runs (id, household_id, trigger_event_id, created_at, assumptions_json, scenarios_json, conflicts_json) VALUES (?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO scenario_runs (id, household_id, trigger_event_id, created_at, assumptions_json, scenarios_json, conflicts_json, decision_capital_cents, constitution_json, analysis_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
       )
       .bind(
         run.runId,
@@ -166,7 +240,10 @@ export class DatabaseRepository {
         run.createdAt,
         JSON.stringify(run.scenarios[0]?.assumptions ?? {}),
         JSON.stringify(run.scenarios),
-        JSON.stringify(run.conflicts)
+        JSON.stringify(run.conflicts),
+        Math.round(run.decisionCapital * 100),
+        JSON.stringify(run.clientConstitution),
+        JSON.stringify(run.analysis)
       )
       .run();
   }
@@ -174,7 +251,7 @@ export class DatabaseRepository {
   async getScenarioRun(id: string): Promise<ScenarioComparisonResponse | null> {
     const row = await this.#db
       .prepare(
-        "SELECT id, household_id, trigger_event_id, created_at, scenarios_json, conflicts_json FROM scenario_runs WHERE id = ?"
+        "SELECT id, household_id, trigger_event_id, created_at, scenarios_json, conflicts_json, decision_capital_cents, constitution_json, analysis_json FROM scenario_runs WHERE id = ?"
       )
       .bind(id)
       .first<ScenarioRunRow>();
@@ -184,6 +261,16 @@ export class DatabaseRepository {
       householdId: row.household_id,
       ...(row.trigger_event_id ? { triggerEventId: row.trigger_event_id } : {}),
       createdAt: row.created_at,
+      decisionCapital:
+        row.decision_capital_cents === null
+          ? (parseJson<ScenarioResult[]>(row.scenarios_json)[0]?.capitalUse.available ?? 0)
+          : row.decision_capital_cents / 100,
+      clientConstitution: row.constitution_json
+        ? parseJson<ClientConstitution>(row.constitution_json)
+        : demoClientConstitution,
+      analysis: row.analysis_json
+        ? parseJson<ScenarioComparisonResponse["analysis"]>(row.analysis_json)
+        : null,
       scenarios: parseJson<ScenarioResult[]>(row.scenarios_json),
       conflicts: parseJson<ConflictFlag[]>(row.conflicts_json)
     };
@@ -267,6 +354,108 @@ export class DatabaseRepository {
       this.#db
         .prepare("UPDATE recommendations SET status = ?, reviewed_at = ? WHERE id = ?")
         .bind(input.decision, input.reviewedAt, input.recommendationId)
+    ]);
+  }
+
+  async saveDecisionPassport(
+    passport: DecisionPassportPayload,
+    proof: DecisionPassportProof
+  ): Promise<void> {
+    await this.#db
+      .prepare(
+        "INSERT INTO decision_passports (id, recommendation_id, household_id, run_id, issued_at, passport_json, content_hash, signature, algorithm, key_id, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'VALID')"
+      )
+      .bind(
+        passport.id,
+        passport.recommendationId,
+        passport.householdId,
+        passport.runId,
+        passport.issuedAt,
+        JSON.stringify(passport),
+        proof.contentHash,
+        proof.signature,
+        proof.algorithm,
+        proof.keyId
+      )
+      .run();
+  }
+
+  async getDecisionPassport(id: string): Promise<StoredDecisionPassport | null> {
+    const row = await this.#db
+      .prepare(
+        "SELECT id, passport_json, content_hash, signature, algorithm, key_id, status, last_checked_at, invalidated_at, invalidation_reasons_json FROM decision_passports WHERE id = ?"
+      )
+      .bind(id)
+      .first<PassportRow>();
+    if (!row) return null;
+    const checkRows = await this.#db
+      .prepare(
+        "SELECT id, checked_at, status_before, status_after, results_json, reasons_json FROM passport_validity_checks WHERE passport_id = ? ORDER BY checked_at DESC LIMIT 20"
+      )
+      .bind(id)
+      .all<PassportCheckRow>();
+    return {
+      passport: parseJson<DecisionPassportPayload>(row.passport_json),
+      proof: {
+        algorithm: row.algorithm,
+        keyId: row.key_id,
+        contentHash: row.content_hash,
+        signature: row.signature
+      },
+      state: {
+        status: row.status,
+        lastCheckedAt: row.last_checked_at,
+        invalidatedAt: row.invalidated_at,
+        invalidationReasons: parseJson<string[]>(row.invalidation_reasons_json)
+      },
+      checks: checkRows.results.map((check) => ({
+        id: check.id,
+        checkedAt: check.checked_at,
+        statusBefore: check.status_before,
+        statusAfter: check.status_after,
+        results: parseJson<PassportValidityCheck["results"]>(check.results_json),
+        reasons: parseJson<string[]>(check.reasons_json)
+      }))
+    };
+  }
+
+  async listMonitorablePassportIds(): Promise<readonly string[]> {
+    const result = await this.#db
+      .prepare(
+        "SELECT id FROM decision_passports WHERE status != 'INVALIDATED' ORDER BY COALESCE(last_checked_at, issued_at) ASC LIMIT 100"
+      )
+      .all<{ id: string }>();
+    return result.results.map((row) => row.id);
+  }
+
+  async savePassportCheck(passportId: string, check: PassportValidityCheck): Promise<void> {
+    await this.#db.batch([
+      this.#db
+        .prepare(
+          "INSERT INTO passport_validity_checks (id, passport_id, checked_at, status_before, status_after, results_json, reasons_json) VALUES (?, ?, ?, ?, ?, ?, ?)"
+        )
+        .bind(
+          check.id,
+          passportId,
+          check.checkedAt,
+          check.statusBefore,
+          check.statusAfter,
+          JSON.stringify(check.results),
+          JSON.stringify(check.reasons)
+        ),
+      this.#db
+        .prepare(
+          "UPDATE decision_passports SET status = ?, last_checked_at = ?, invalidated_at = CASE WHEN ? = 'INVALIDATED' THEN COALESCE(invalidated_at, ?) ELSE invalidated_at END, invalidation_reasons_json = CASE WHEN ? = 'INVALIDATED' THEN ? ELSE invalidation_reasons_json END WHERE id = ?"
+        )
+        .bind(
+          check.statusAfter,
+          check.checkedAt,
+          check.statusAfter,
+          check.checkedAt,
+          check.statusAfter,
+          JSON.stringify(check.reasons),
+          passportId
+        )
     ]);
   }
 

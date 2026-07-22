@@ -3,6 +3,9 @@ import {
   type Citation,
   type DashboardHousehold,
   type DashboardResponse,
+  type DecisionPassportResponse,
+  type ValidityMetric,
+  passportMonitorRequestSchema,
   recommendationRequestSchema,
   reviewRequestSchema,
   scenarioComparisonRequestSchema
@@ -13,6 +16,7 @@ import {
   ResilientRecommendationGenerator
 } from "@fidt/ai-orchestrator";
 import {
+  analyzeDecision,
   calculateAnnualAdvisoryFee,
   demoAssumptions,
   demoFeeSchedule,
@@ -21,6 +25,7 @@ import {
   runScenarioComparison,
   type AssumptionSet,
   type ConflictFlag,
+  type DecisionContext,
   type HouseholdSnapshot,
   type StrategyRequest
 } from "@fidt/domain";
@@ -28,6 +33,12 @@ import { evaluateRecommendation } from "@fidt/policy-engine";
 import { Hono } from "hono";
 import { ZodError } from "zod";
 import { getLiveData } from "./live-data";
+import {
+  evaluatePassportValidity,
+  issueDecisionPassport,
+  observationsForPassport,
+  verifyDecisionPassport
+} from "./passports";
 import { approvalBlockReason, verifyAuditChain } from "./governance";
 import { authenticate, rateLimit, requestContext, securityHeaders } from "./middleware";
 import { DatabaseRepository } from "./repositories/database";
@@ -64,9 +75,9 @@ app.get("/api/dashboard", async (context) => {
         latest.length > 0
           ? latest
           : runScenarioComparison(household, demoStrategies, demoAssumptions, demoFeeSchedule);
-      const leading = [...scenarios].sort(
-        (left, right) => right.successProbability - left.successProbability
-      )[0];
+      const leading = [...scenarios]
+        .filter((scenario) => scenario.capitalUse?.feasible !== false)
+        .sort((left, right) => right.successProbability - left.successProbability)[0];
       const householdEvents = events.filter((event) => event.householdId === household.id);
       return {
         id: household.id,
@@ -108,11 +119,12 @@ app.get("/api/households/:householdId", async (context) => {
   const repository = await repositoryFor(context.env);
   const householdId = context.req.param("householdId");
   const household = await requireHousehold(repository, householdId);
-  const [events, latestScenarios] = await Promise.all([
+  const [clientConstitution, events, latestScenarios] = await Promise.all([
+    repository.getCurrentConstitution(householdId),
     repository.listEvents(householdId),
     repository.getLatestScenarios(householdId)
   ]);
-  return context.json({ household, events, latestScenarios });
+  return context.json({ household, clientConstitution, events, latestScenarios });
 });
 
 app.post("/api/households/:householdId/scenarios", async (context) => {
@@ -143,11 +155,25 @@ app.post("/api/households/:householdId/scenarios", async (context) => {
     version: demoAssumptions.version + 1,
     asOf: new Date().toISOString().slice(0, 10)
   };
+  const clientConstitution = await repository.getCurrentConstitution(household.id);
+  const decisionContext: DecisionContext = {
+    decisionCapital: request.decisionCapital,
+    constitution: clientConstitution
+  };
   const scenarios = runScenarioComparison(
     household,
     request.strategies as readonly StrategyRequest[],
     assumptions,
-    demoFeeSchedule
+    demoFeeSchedule,
+    decisionContext
+  );
+  const analysis = analyzeDecision(
+    household,
+    request.strategies as readonly StrategyRequest[],
+    assumptions,
+    demoFeeSchedule,
+    decisionContext,
+    scenarios
   );
   const currentManagedAssets = household.accounts
     .filter((account) => account.managed)
@@ -163,6 +189,9 @@ app.post("/api/households/:householdId/scenarios", async (context) => {
     householdId: household.id,
     ...(request.triggerEventId ? { triggerEventId: request.triggerEventId } : {}),
     createdAt: new Date().toISOString(),
+    decisionCapital: request.decisionCapital,
+    clientConstitution,
+    analysis,
     scenarios,
     conflicts
   };
@@ -177,6 +206,9 @@ app.post("/api/households/:householdId/scenarios", async (context) => {
     metadata: {
       strategyTypes: scenarios.map((scenario) => scenario.strategy),
       assumptionsId: assumptions.id,
+      constitutionId: clientConstitution.id,
+      constitutionVersion: clientConstitution.version,
+      decisionCapital: request.decisionCapital,
       triggerEventId: request.triggerEventId ?? null
     }
   });
@@ -223,7 +255,7 @@ app.post("/api/households/:householdId/recommendations", async (context) => {
   const primary = context.env.OPENROUTER_API_KEY
     ? new OpenRouterRecommendationGenerator({
         apiKey: context.env.OPENROUTER_API_KEY,
-        model: context.env.OPENROUTER_MODEL ?? "openrouter/free",
+        model: context.env.OPENROUTER_MODEL ?? "nvidia/nemotron-3-super-120b-a12b:free",
         requireZeroDataRetention: context.env.APP_ENV !== "demo",
         siteName: "FiduciaryOS Digital Twin",
         ...(context.env.APP_PUBLIC_URL ? { siteUrl: context.env.APP_PUBLIC_URL } : {})
@@ -325,10 +357,84 @@ app.post("/api/recommendations/:recommendationId/review", async (context) => {
     entityId: recommendationId,
     metadata: { reviewId, decision: input.decision, attestation: input.attestation }
   });
+  let passportId: string | undefined;
+  let passportStatus: "VALID" | undefined;
+  if (input.decision === "APPROVE") {
+    const [run, household] = await Promise.all([
+      repository.getScenarioRun(stored.runId),
+      repository.getHousehold(stored.recommendation.householdId)
+    ]);
+    if (!run || !household) throw new HttpError(409, "Passport source data is unavailable");
+    const issued = await issueDecisionPassport(
+      {
+        recommendation: stored.recommendation,
+        compliance: stored.compliance,
+        run,
+        household,
+        reviewAuditEventId: auditEvent.id,
+        now: new Date(reviewedAt)
+      },
+      passportSigningSecret(context.env)
+    );
+    await repository.saveDecisionPassport(issued.passport, issued.proof);
+    passportId = issued.passport.id;
+    passportStatus = "VALID";
+    await repository.appendAudit({
+      householdId: stored.recommendation.householdId,
+      actorType: "SYSTEM",
+      actorId: issued.proof.keyId,
+      action: "DECISION_PASSPORT_ISSUED",
+      entityType: "decision_passport",
+      entityId: issued.passport.id,
+      metadata: {
+        recommendationId,
+        runId: run.runId,
+        contentHash: issued.proof.contentHash,
+        validityConditions: issued.passport.validityEnvelope.length
+      }
+    });
+  }
   return context.json(
-    { id: reviewId, recommendationId, ...input, reviewedAt, auditEventId: auditEvent.id },
+    {
+      id: reviewId,
+      recommendationId,
+      ...input,
+      reviewedAt,
+      auditEventId: auditEvent.id,
+      ...(passportId ? { passportId, passportStatus } : {})
+    },
     201
   );
+});
+
+app.get("/api/passports/:passportId", async (context) => {
+  const repository = await repositoryFor(context.env);
+  const stored = await repository.getDecisionPassport(context.req.param("passportId"));
+  if (!stored) throw new HttpError(404, "Decision Passport not found");
+  const response: DecisionPassportResponse = {
+    ...stored,
+    verification: {
+      verified: await verifyDecisionPassport(
+        stored.passport,
+        stored.proof,
+        passportSigningSecret(context.env)
+      ),
+      verifiedAt: new Date().toISOString()
+    }
+  };
+  return context.json(response);
+});
+
+app.post("/api/passports/:passportId/monitor", async (context) => {
+  const repository = await repositoryFor(context.env);
+  const passportId = context.req.param("passportId");
+  const input = passportMonitorRequestSchema.parse(await context.req.json());
+  if (input.observations && context.env.APP_ENV !== "demo") {
+    throw new HttpError(422, "Observation overrides are available only in synthetic demo mode");
+  }
+  const response = await monitorPassport(repository, context.env, passportId, input.observations);
+  if (!response) throw new HttpError(404, "Decision Passport not found");
+  return context.json(response);
 });
 
 app.get("/api/households/:householdId/audit", async (context) => {
@@ -359,6 +465,9 @@ app.onError((error, context) => {
       { error: error.message, requestId: context.get("requestId") },
       error.status
     );
+  }
+  if (error instanceof RangeError) {
+    return context.json({ error: error.message, requestId: context.get("requestId") }, 422);
   }
   console.error(
     JSON.stringify({
@@ -393,6 +502,65 @@ function message(error: unknown): string {
   return error instanceof Error ? error.message : "Unknown error";
 }
 
+function passportSigningSecret(env: Bindings): string {
+  if (env.PASSPORT_SIGNING_SECRET) return env.PASSPORT_SIGNING_SECRET;
+  if (env.APP_ENV === "production") {
+    throw new Error("PASSPORT_SIGNING_SECRET is required in production");
+  }
+  return "fidt-local-demo-passport-signing-key-v1";
+}
+
+async function monitorPassport(
+  repository: DatabaseRepository,
+  env: Bindings,
+  passportId: string,
+  overrides?: Partial<Record<ValidityMetric, number>>
+): Promise<DecisionPassportResponse | null> {
+  const stored = await repository.getDecisionPassport(passportId);
+  if (!stored) return null;
+  const household = await repository.getHousehold(stored.passport.householdId);
+  if (!household) return null;
+  const liveData = await getLiveData(env.CACHE, { secUserAgent: env.SEC_USER_AGENT });
+  const observations = {
+    ...observationsForPassport(stored.passport, household, liveData),
+    ...overrides
+  };
+  const check = evaluatePassportValidity(stored, observations);
+  await repository.savePassportCheck(passportId, check);
+  if (check.statusAfter !== check.statusBefore) {
+    await repository.appendAudit({
+      householdId: stored.passport.householdId,
+      actorType: "SYSTEM",
+      actorId: "passport-validity-monitor-v1",
+      action:
+        check.statusAfter === "INVALIDATED"
+          ? "DECISION_PASSPORT_INVALIDATED"
+          : "DECISION_PASSPORT_STATUS_CHANGED",
+      entityType: "decision_passport",
+      entityId: passportId,
+      metadata: {
+        statusBefore: check.statusBefore,
+        statusAfter: check.statusAfter,
+        reasons: check.reasons,
+        checkId: check.id
+      }
+    });
+  }
+  const refreshed = await repository.getDecisionPassport(passportId);
+  if (!refreshed) return null;
+  return {
+    ...refreshed,
+    verification: {
+      verified: await verifyDecisionPassport(
+        refreshed.passport,
+        refreshed.proof,
+        passportSigningSecret(env)
+      ),
+      verifiedAt: new Date().toISOString()
+    }
+  };
+}
+
 class HttpError extends Error {
   readonly status: 400 | 401 | 404 | 409 | 422 | 429;
 
@@ -402,4 +570,19 @@ class HttpError extends Error {
   }
 }
 
-export default app;
+export default {
+  fetch: app.fetch,
+  scheduled(
+    _controller: ScheduledController,
+    env: Bindings,
+    executionContext: ExecutionContext
+  ): void {
+    executionContext.waitUntil(
+      (async () => {
+        const repository = await repositoryFor(env);
+        const ids = await repository.listMonitorablePassportIds();
+        for (const id of ids) await monitorPassport(repository, env, id);
+      })()
+    );
+  }
+};

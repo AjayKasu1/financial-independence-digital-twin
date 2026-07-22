@@ -140,9 +140,10 @@ export function createDeterministicRecommendation(
       right.successProbability - left.successProbability ||
       right.projectedLiquidAssets - left.projectedLiquidAssets
   );
-  const recommended = ranked[0];
-  if (!recommended) throw new RangeError("At least two scenarios are required");
-  const alternative = ranked[1];
+  const recommended = ranked.find((scenario) => scenario.capitalUse.feasible);
+  if (!recommended) throw new RangeError("At least one capital-feasible scenario is required");
+  const alternatives = ranked.filter((scenario) => scenario.id !== recommended.id);
+  const alternative = alternatives[0];
   if (!alternative) throw new RangeError("At least two scenarios are required");
   const calculationCitation: Citation = {
     id: `calculation-${recommended.id}`,
@@ -184,7 +185,7 @@ export function createDeterministicRecommendation(
       }
     ],
     citations: [...context.citations, calculationCitation],
-    alternativesConsidered: ranked.slice(1).map((scenario) => scenario.label),
+    alternativesConsidered: alternatives.map((scenario) => scenario.label),
     conflictsDisclosed: context.conflicts.map((conflict) => conflict.message),
     missingInformation: missingInformation(context.household),
     modelId: FALLBACK_MODEL_ID,
@@ -196,6 +197,7 @@ export function createDeterministicRecommendation(
 const SYSTEM_PROMPT = `You are a drafting assistant for a fiduciary financial advisor.
 Return only a JSON object matching the requested recommendation structure.
 Never calculate, estimate, or change a numeric value. Use only values in scenarioOutputs.
+Never recommend a scenario where capitalUse.feasible is false.
 Every factual or calculated statement must cite an allowed citation id and calculated claims must include a calculationRefs path.
 Label each statement as CLIENT_FACT, DETERMINISTIC_CALCULATION, EXTERNAL_FACT, PLANNING_ASSUMPTION, ADVISOR_JUDGMENT, or AI_SUGGESTION.
 Discuss reasonable alternatives and disclosed conflicts. Do not promise outcomes or use guarantee, risk-free, cannot-lose, or no-downside language.

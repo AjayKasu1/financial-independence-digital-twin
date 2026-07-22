@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
 import {
+  analyzeDecision,
   calculateAnnualAdvisoryFee,
   calculateFiNumber,
   calculateIrr,
   calculateMortgagePayment,
   demoAssumptions,
+  demoClientConstitution,
   demoFeeSchedule,
   demoHousehold,
   demoStrategies,
@@ -137,5 +139,82 @@ describe("scenario engine", () => {
     expect(() =>
       runScenarioComparison(demoHousehold, [demoStrategies[0]!], demoAssumptions, demoFeeSchedule)
     ).toThrow("At least two alternatives");
+  });
+
+  it("enforces one shared capital pool and identifies rental infeasibility", () => {
+    const decisionCapital = 71_000;
+    const requests = demoStrategies.map((strategy) => {
+      if (strategy.type === "PORTFOLIO" && strategy.portfolio) {
+        return {
+          ...strategy,
+          portfolio: { ...strategy.portfolio, initialInvestment: decisionCapital }
+        };
+      }
+      if (strategy.type === "DEBT_PAYDOWN" && strategy.debt) {
+        return { ...strategy, debt: { ...strategy.debt, lumpSum: 42_000 } };
+      }
+      return strategy;
+    });
+    const context = { decisionCapital, constitution: demoClientConstitution };
+    const scenarios = runScenarioComparison(
+      demoHousehold,
+      requests,
+      demoAssumptions,
+      demoFeeSchedule,
+      context
+    );
+    const rental = scenarios.find((scenario) => scenario.strategy === "RENTAL");
+    const portfolio = scenarios.find((scenario) => scenario.strategy === "PORTFOLIO");
+    const debt = scenarios.find((scenario) => scenario.strategy === "DEBT_PAYDOWN");
+    expect(rental?.capitalUse).toMatchObject({ available: 71_000, feasible: false });
+    expect(rental?.risks.some((risk) => risk.code === "DECISION_CAPITAL_SHORTFALL")).toBe(true);
+    expect(portfolio?.capitalUse).toMatchObject({ deployed: 71_000, residual: 0 });
+    expect(debt?.capitalUse).toMatchObject({ deployed: 42_000, residual: 29_000 });
+  });
+
+  it("keeps rental-only inputs isolated and produces deterministic decision boundaries", () => {
+    const context = { decisionCapital: 147_000, constitution: demoClientConstitution };
+    const baseline = runScenarioComparison(
+      demoHousehold,
+      demoStrategies,
+      demoAssumptions,
+      demoFeeSchedule,
+      context
+    );
+    const changedRequests = demoStrategies.map((strategy) =>
+      strategy.type === "RENTAL" && strategy.rental
+        ? {
+            ...strategy,
+            rental: { ...strategy.rental, purchasePrice: 515_000, mortgageRate: 0.0425 }
+          }
+        : strategy
+    );
+    const changed = runScenarioComparison(
+      demoHousehold,
+      changedRequests,
+      demoAssumptions,
+      demoFeeSchedule,
+      context
+    );
+    expect(changed.find((scenario) => scenario.strategy === "RENTAL")).not.toEqual(
+      baseline.find((scenario) => scenario.strategy === "RENTAL")
+    );
+    expect(changed.find((scenario) => scenario.strategy === "PORTFOLIO")).toEqual(
+      baseline.find((scenario) => scenario.strategy === "PORTFOLIO")
+    );
+    expect(changed.find((scenario) => scenario.strategy === "DEBT_PAYDOWN")).toEqual(
+      baseline.find((scenario) => scenario.strategy === "DEBT_PAYDOWN")
+    );
+    const analysis = analyzeDecision(
+      demoHousehold,
+      demoStrategies,
+      demoAssumptions,
+      demoFeeSchedule,
+      context,
+      baseline
+    );
+    expect(analysis?.sensitivity).toHaveLength(9);
+    expect(analysis?.maxAffordablePurchasePrice).toBe(525_000);
+    expect(analysis?.definition).toContain("same assumption version");
   });
 });

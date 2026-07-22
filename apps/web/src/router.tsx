@@ -6,6 +6,7 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { DataConnectorsPage } from "./pages/DataConnectorsPage";
 import { EvidenceLibraryPage } from "./pages/EvidenceLibraryPage";
 import { HouseholdPage } from "./pages/HouseholdPage";
+import { PassportPage } from "./pages/PassportPage";
 import { RecommendationPage } from "./pages/RecommendationPage";
 
 export const router = createBrowserRouter([
@@ -19,6 +20,7 @@ export const router = createBrowserRouter([
       { path: "households/:householdId", element: <HouseholdPage /> },
       { path: "households/:householdId/compare", element: <ComparePage /> },
       { path: "households/:householdId/recommendation", element: <RecommendationPage /> },
+      { path: "households/:householdId/passports/:passportId", element: <PassportPage /> },
       { path: "households/:householdId/audit", element: <AuditPage /> },
       { path: "*", element: <Navigate to="/" replace /> }
     ]

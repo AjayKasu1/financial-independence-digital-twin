@@ -1,5 +1,6 @@
 import type {
   AssumptionSet,
+  ClientConstitution,
   FeeSchedule,
   FinancialEvent,
   HouseholdSnapshot,
@@ -194,6 +195,26 @@ export const demoHousehold: HouseholdSnapshot = {
     values: ["Flexibility", "Family time", "Tax-aware diversification"]
   },
   annualSpending: 144_000
+};
+
+export const demoClientConstitution: ClientConstitution = {
+  id: "constitution-patel-v1",
+  householdId: demoHousehold.id,
+  version: 1,
+  effectiveAt: `${asOf}T13:00:00.000Z`,
+  approvedBy: "Maya & Arjun Patel (synthetic)",
+  constraints: {
+    liquidityFloor: 150_000,
+    maxEmployerStockPercent: 0.25,
+    maxRealEstateHoursPerMonth: 8,
+    targetFiAge: 52,
+    minimumFiSuccessProbability: 0.72
+  },
+  preferences: {
+    riskTolerance: "GROWTH",
+    realEstateInterest: "MEDIUM",
+    values: ["Flexibility", "Family time", "Tax-aware diversification"]
+  }
 };
 
 export const demoAssumptions: AssumptionSet = {

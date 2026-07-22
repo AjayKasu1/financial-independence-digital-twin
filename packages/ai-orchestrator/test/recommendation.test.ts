@@ -41,6 +41,22 @@ describe("recommendation orchestration", () => {
     ).toBe(true);
   });
 
+  it("never selects a capital-infeasible scenario", () => {
+    const highest = [...scenarios].sort(
+      (left, right) => right.successProbability - left.successProbability
+    )[0]!;
+    const constrained = scenarios.map((scenario) =>
+      scenario.id === highest.id
+        ? { ...scenario, capitalUse: { ...scenario.capitalUse, feasible: false } }
+        : scenario
+    );
+    const recommendation = createDeterministicRecommendation({
+      ...context,
+      scenarios: constrained
+    });
+    expect(recommendation.recommendedScenarioId).not.toBe(highest.id);
+  });
+
   it("falls back when the configured model provider is unavailable", async () => {
     const failing: RecommendationGenerator = {
       generate: () => Promise.reject(new Error("provider unavailable"))
