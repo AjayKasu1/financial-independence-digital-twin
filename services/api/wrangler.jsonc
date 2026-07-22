@@ -21,26 +21,14 @@
     {
       "binding": "FIDT_DB",
       "database_name": "fidt-demo",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "61b9bdc1-e7d7-48b2-ac51-829d27f433c1",
       "migrations_dir": "migrations"
     }
   ],
   "kv_namespaces": [
     {
       "binding": "CACHE",
-      "id": "00000000000000000000000000000000"
-    }
-  ],
-  "r2_buckets": [
-    {
-      "binding": "DOCUMENTS",
-      "bucket_name": "fidt-evidence"
-    }
-  ],
-  "vectorize": [
-    {
-      "binding": "EVIDENCE_INDEX",
-      "index_name": "fidt-evidence-index"
+      "id": "2774fe30ef6d445cace4e857d2f02794"
     }
   ]
 }

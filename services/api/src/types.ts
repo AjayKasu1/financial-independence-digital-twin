@@ -3,8 +3,6 @@ import type { AuditEventDto } from "@fidt/contracts";
 export interface Env {
   readonly FIDT_DB: D1Database;
   readonly CACHE: KVNamespace;
-  readonly DOCUMENTS: R2Bucket;
-  readonly EVIDENCE_INDEX: VectorizeIndex;
   readonly APP_ENV: "development" | "demo" | "production";
   readonly OPENROUTER_API_KEY?: string;
   readonly OPENROUTER_MODEL?: string;

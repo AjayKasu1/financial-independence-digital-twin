@@ -35,7 +35,7 @@ flowchart LR
 - React 19, TypeScript, Vite, React Router
 - Cloudflare Worker with Hono
 - D1 for application/audit data, KV for cache and rate limits
-- R2 and Vectorize bindings reserved for the evidence-document phase
+- R2 and Vectorize planned for the future evidence-document phase
 - OpenRouter-compatible recommendation orchestration with zero-data-retention routing requested
 - Vitest, fast-check, ESLint, Prettier, GitHub Actions
 
@@ -88,7 +88,7 @@ The sample API payload is at [`examples/scenario-request.json`](examples/scenari
 
 ## Deploy to Cloudflare
 
-1. Create a D1 database, KV namespace, R2 bucket, and Vectorize index.
+1. Create a D1 database and KV namespace. R2 and Vectorize are not required until the future evidence-document phase.
 2. Replace the placeholder IDs/names in `services/api/wrangler.jsonc`.
 3. Apply remote migrations:
 
@@ -111,7 +111,7 @@ The sample API payload is at [`examples/scenario-request.json`](examples/scenari
    npm run deploy
    ```
 
-Cloudflare free-tier limits and product pricing change; confirm current limits before launch. D1, KV, R2, Vectorize, and third-party model usage can become billable beyond their included quotas.
+Cloudflare free-tier limits and product pricing change; confirm current limits before launch. D1, KV, and third-party model usage can become billable beyond their included quotas.
 
 ## AWS migration path
 

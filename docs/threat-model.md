@@ -31,9 +31,9 @@
 1. Browser to Worker: untrusted input; authenticate, validate, limit.
 2. Worker to public government sources: untrusted response; parse defensively, date, cache.
 3. Worker to LLM provider: data egress; minimize context and validate every response.
-4. Worker to D1/KV/R2/Vectorize: privileged persistence; least-privilege bindings and environment separation.
+4. Worker to D1/KV: privileged persistence; least-privilege bindings and environment separation.
 5. Automated policy to advisor: automation is advisory; explicit human attestation remains mandatory.
 
 ## Known demo limitations
 
-KV increment-based limiting is not strongly atomic. D1 hash chaining is tamper-evident but not independently anchored. The normalized financial tables are prepared but the demo reads the canonical synthetic JSON snapshot. Vectorize and R2 are bound for the future evidence phase but are not yet used. These limits are intentional and documented rather than hidden.
+KV increment-based limiting is not strongly atomic. D1 hash chaining is tamper-evident but not independently anchored. The normalized financial tables are prepared but the demo reads the canonical synthetic JSON snapshot. Vectorize and R2 remain future evidence-phase components and are intentionally not bound until used. These limits are intentional and documented rather than hidden.
