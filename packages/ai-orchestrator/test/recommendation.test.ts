@@ -121,10 +121,12 @@ describe("recommendation orchestration", () => {
 
   it("requires ZDR by default and relaxes it only when explicitly configured", async () => {
     const providerPreferences: unknown[] = [];
+    const responseFormats: unknown[] = [];
     const captureRequest: typeof fetch = (_input, init) => {
       if (typeof init?.body !== "string") throw new TypeError("Expected a JSON request body");
-      const body = JSON.parse(init.body) as { provider?: unknown };
+      const body = JSON.parse(init.body) as { provider?: unknown; response_format?: unknown };
       providerPreferences.push(body.provider);
+      responseFormats.push(body.response_format);
       return Promise.resolve(
         new Response(JSON.stringify({ error: { message: "captured" } }), { status: 503 })
       );
@@ -147,8 +149,12 @@ describe("recommendation orchestration", () => {
     ).rejects.toThrow("captured");
 
     expect(providerPreferences).toEqual([
-      { data_collection: "deny", zdr: true },
-      { data_collection: "deny" }
+      { data_collection: "deny", require_parameters: true, zdr: true },
+      { data_collection: "deny", require_parameters: true }
+    ]);
+    expect(responseFormats).toEqual([
+      expect.objectContaining({ type: "json_schema" }),
+      expect.objectContaining({ type: "json_schema" })
     ]);
   });
 

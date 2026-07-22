@@ -61,9 +61,18 @@ export class OpenRouterRecommendationGenerator implements RecommendationGenerato
       body: JSON.stringify({
         model: this.#options.model,
         temperature: 0.1,
-        response_format: { type: "json_object" },
+        max_tokens: 2_000,
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "fiduciary_recommendation",
+            strict: true,
+            schema: RECOMMENDATION_OUTPUT_SCHEMA
+          }
+        },
         provider: {
           data_collection: "deny",
+          require_parameters: true,
           ...(this.#options.requireZeroDataRetention === false ? {} : { zdr: true })
         },
         messages: [
@@ -188,6 +197,69 @@ Every factual or calculated statement must cite an allowed citation id and calcu
 Label each statement as CLIENT_FACT, DETERMINISTIC_CALCULATION, EXTERNAL_FACT, PLANNING_ASSUMPTION, ADVISOR_JUDGMENT, or AI_SUGGESTION.
 Discuss reasonable alternatives and disclosed conflicts. Do not promise outcomes or use guarantee, risk-free, cannot-lose, or no-downside language.
 Output these fields only: recommendedScenarioId, headline, executiveSummary, statements, alternativesConsidered, missingInformation.`;
+
+const RECOMMENDATION_OUTPUT_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    recommendedScenarioId: {
+      type: "string",
+      minLength: 1,
+      description: "An exact scenario id from scenarioOutputs."
+    },
+    headline: { type: "string", minLength: 1, maxLength: 180 },
+    executiveSummary: { type: "string", minLength: 1, maxLength: 2_000 },
+    statements: {
+      type: "array",
+      minItems: 1,
+      maxItems: 20,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          id: { type: "string", minLength: 1 },
+          label: {
+            type: "string",
+            enum: [
+              "CLIENT_FACT",
+              "DETERMINISTIC_CALCULATION",
+              "EXTERNAL_FACT",
+              "PLANNING_ASSUMPTION",
+              "ADVISOR_JUDGMENT",
+              "AI_SUGGESTION"
+            ]
+          },
+          text: { type: "string", minLength: 1, maxLength: 1_500 },
+          citationIds: {
+            type: "array",
+            items: { type: "string" },
+            description: "Only ids from allowedCitations."
+          },
+          calculationRefs: {
+            type: "array",
+            items: { type: "string" },
+            description: "Scenario output paths for deterministic calculations; otherwise empty."
+          }
+        },
+        required: ["id", "label", "text", "citationIds", "calculationRefs"]
+      }
+    },
+    alternativesConsidered: {
+      type: "array",
+      minItems: 1,
+      items: { type: "string" }
+    },
+    missingInformation: { type: "array", items: { type: "string" } }
+  },
+  required: [
+    "recommendedScenarioId",
+    "headline",
+    "executiveSummary",
+    "statements",
+    "alternativesConsidered",
+    "missingInformation"
+  ]
+} as const;
 
 function toPromptPayload(context: RecommendationContext): Record<string, unknown> {
   return {
