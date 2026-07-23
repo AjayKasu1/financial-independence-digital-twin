@@ -47,6 +47,24 @@ export function AppShell() {
     window.scrollTo({ top: 0, behavior: "instant" });
   }, [location.pathname]);
   useEffect(() => {
+    const finePointer = window.matchMedia("(hover: hover) and (pointer: fine)");
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    if (!finePointer.matches || reducedMotion.matches) return;
+
+    const updateSurfaceLight = (event: PointerEvent) => {
+      const surface = (event.target as Element | null)?.closest<HTMLElement>(
+        ".panel, .metric-card"
+      );
+      if (!surface) return;
+      const bounds = surface.getBoundingClientRect();
+      surface.style.setProperty("--pointer-x", `${event.clientX - bounds.left}px`);
+      surface.style.setProperty("--pointer-y", `${event.clientY - bounds.top}px`);
+    };
+
+    document.addEventListener("pointermove", updateSurfaceLight, { passive: true });
+    return () => document.removeEventListener("pointermove", updateSurfaceLight);
+  }, []);
+  useEffect(() => {
     const dismiss = (event: PointerEvent) => {
       if (openMenu && !actionsRef.current?.contains(event.target as Node)) setOpenMenu(null);
     };

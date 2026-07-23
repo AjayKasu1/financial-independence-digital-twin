@@ -55,6 +55,7 @@ export function HouseholdPage() {
   const liabilities = household.liabilities.reduce((sum, liability) => sum + liability.balance, 0);
   const income = household.incomeSources.reduce((sum, source) => sum + source.annualAmount, 0);
   const scenario = data.latestScenarios[0];
+  const modeledHorizon = scenario?.timeline[scenario.timeline.length - 1];
 
   return (
     <>
@@ -203,8 +204,11 @@ export function HouseholdPage() {
             <>
               <MiniLine values={scenario.timeline.map((year) => year.liquidAssets)} />
               <div className="goal-caption">
-                <span>Current liquid</span>
-                <span>Modeled horizon</span>
+                <span>Today · {currency.format(liquid)}</span>
+                <span>
+                  Age {modeledHorizon?.age ?? "—"} ·{" "}
+                  {currency.format(modeledHorizon?.liquidAssets ?? 0)}
+                </span>
               </div>
               <p className="callout">
                 Under the latest scenario, FI is modeled at age{" "}
