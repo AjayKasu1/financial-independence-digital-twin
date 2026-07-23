@@ -6,11 +6,14 @@ import type {
 } from "@fidt/contracts";
 import {
   analyzeDecision,
+  compareHouseholdResilience,
   demoAssumptions,
   demoClientConstitution,
   demoFeeSchedule,
   demoHousehold,
   demoStrategies,
+  noResilienceShock,
+  resilienceOptionsForStrategies,
   runScenarioComparison
 } from "@fidt/domain";
 import {
@@ -97,7 +100,15 @@ function scenarioRun(): ScenarioComparisonResponse {
       scenarios
     ),
     scenarios,
-    conflicts: []
+    conflicts: [],
+    resilience: compareHouseholdResilience(
+      demoHousehold,
+      demoClientConstitution,
+      noResilienceShock,
+      decisionContext.decisionCapital,
+      resilienceOptionsForStrategies(demoHousehold, demoStrategies),
+      new Date("2026-07-22T17:59:00.000Z")
+    )
   };
 }
 
@@ -116,6 +127,17 @@ describe("Decision Passport governance", () => {
       secret
     );
     await expect(verifyDecisionPassport(issued.passport, issued.proof, secret)).resolves.toBe(true);
+    expect(issued.passport.resilience?.stressed.methodologyVersion).toBe(
+      "household-optionality-v1"
+    );
+    expect(issued.passport.validityEnvelope.map((condition) => condition.metric)).toEqual(
+      expect.arrayContaining([
+        "RESILIENCE_SCORE",
+        "CREDIT_FREE_RUNWAY_MONTHS",
+        "SHOCK_CREDIT_REQUIRED",
+        "FEASIBLE_OPTIONS"
+      ])
+    );
     const tampered = { ...issued.passport, decisionCapital: 999_999 };
     await expect(verifyDecisionPassport(tampered, issued.proof, secret)).resolves.toBe(false);
   });

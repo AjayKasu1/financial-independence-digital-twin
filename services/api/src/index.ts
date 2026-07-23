@@ -4,6 +4,7 @@ import {
   type DashboardHousehold,
   type DashboardResponse,
   type DecisionPassportResponse,
+  type ScenarioComparisonResponse,
   type ValidityMetric,
   passportMonitorRequestSchema,
   recommendationRequestSchema,
@@ -18,11 +19,16 @@ import {
 } from "@fidt/ai-orchestrator";
 import {
   analyzeDecision,
+  applyResilienceShock,
   calculateAnnualAdvisoryFee,
+  compareHouseholdResilience,
   demoAssumptions,
   demoFeeSchedule,
   demoStrategies,
   detectAdvisorRevenueConflict,
+  evaluateHouseholdResilience,
+  noResilienceShock,
+  resilienceOptionsForStrategies,
   runScenarioComparison,
   type AssumptionSet,
   type ConflictFlag,
@@ -126,7 +132,15 @@ app.get("/api/households/:householdId", async (context) => {
     repository.listEvents(householdId),
     repository.getLatestScenarios(householdId)
   ]);
-  return context.json({ household, clientConstitution, events, latestScenarios });
+  const decisionCapital = household.rsuGrants[0]?.nextVestValue ?? 0;
+  const resilience = evaluateHouseholdResilience(
+    household,
+    clientConstitution,
+    noResilienceShock,
+    decisionCapital,
+    resilienceOptionsForStrategies(household, demoStrategies, decisionCapital)
+  );
+  return context.json({ household, clientConstitution, events, latestScenarios, resilience });
 });
 
 app.post("/api/households/:householdId/workbench", async (context) => {
@@ -166,19 +180,45 @@ app.post("/api/households/:householdId/scenarios", async (context) => {
     asOf: new Date().toISOString().slice(0, 10)
   };
   const clientConstitution = await repository.getCurrentConstitution(household.id);
+  const originalDecisionCapital = request.preShockDecisionCapital ?? request.decisionCapital;
+  const resilience = request.resilienceShock
+    ? compareHouseholdResilience(
+        household,
+        clientConstitution,
+        request.resilienceShock,
+        originalDecisionCapital,
+        resilienceOptionsForStrategies(
+          household,
+          request.strategies as readonly StrategyRequest[],
+          originalDecisionCapital
+        )
+      )
+    : undefined;
+  if (
+    resilience &&
+    request.decisionCapital > resilience.stressed.metrics.availableDecisionCapital + 0.01
+  ) {
+    throw new HttpError(
+      422,
+      "Decision capital exceeds the amount preserved after the resilience stress"
+    );
+  }
+  const scenarioHousehold = resilience
+    ? applyResilienceShock(household, resilience.stressed)
+    : household;
   const decisionContext: DecisionContext = {
     decisionCapital: request.decisionCapital,
     constitution: clientConstitution
   };
   const scenarios = runScenarioComparison(
-    household,
+    scenarioHousehold,
     request.strategies as readonly StrategyRequest[],
     assumptions,
     demoFeeSchedule,
     decisionContext
   );
   const analysis = analyzeDecision(
-    household,
+    scenarioHousehold,
     request.strategies as readonly StrategyRequest[],
     assumptions,
     demoFeeSchedule,
@@ -203,8 +243,9 @@ app.post("/api/households/:householdId/scenarios", async (context) => {
     clientConstitution,
     analysis,
     scenarios,
-    conflicts
-  };
+    conflicts,
+    ...(resilience ? { resilience } : {})
+  } satisfies ScenarioComparisonResponse;
   await repository.saveScenarioRun(run);
   await repository.appendAudit({
     householdId: household.id,
@@ -219,6 +260,10 @@ app.post("/api/households/:householdId/scenarios", async (context) => {
       constitutionId: clientConstitution.id,
       constitutionVersion: clientConstitution.version,
       decisionCapital: request.decisionCapital,
+      preShockDecisionCapital: request.preShockDecisionCapital ?? null,
+      resilienceScore: resilience?.stressed.score ?? null,
+      resilienceBand: resilience?.stressed.band ?? null,
+      resilienceBreaches: resilience?.stressed.breaches.map((breach) => breach.code) ?? [],
       triggerEventId: request.triggerEventId ?? null
     }
   });
@@ -285,6 +330,7 @@ app.post("/api/households/:householdId/recommendations", async (context) => {
     scenarios: run.scenarios,
     conflicts: run.conflicts,
     citations,
+    ...(run.resilience ? { resilience: run.resilience } : {}),
     ...(request.advisorRationale ? { advisorRationale: request.advisorRationale } : {}),
     ...(repairSource
       ? {
@@ -303,7 +349,8 @@ app.post("/api/households/:householdId/recommendations", async (context) => {
   const compliance = evaluateRecommendation({
     recommendation,
     scenarios: run.scenarios,
-    conflicts: run.conflicts
+    conflicts: run.conflicts,
+    ...(run.resilience ? { resilience: run.resilience } : {})
   });
   await repository.saveRecommendation(recommendation, compliance, run.runId);
   await repository.appendAudit({

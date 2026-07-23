@@ -2,16 +2,17 @@
 
 ## Data classes
 
-| Class               | Demo behavior                                   | Production control                                             |
-| ------------------- | ----------------------------------------------- | -------------------------------------------------------------- |
-| Household data      | Synthetic only                                  | Minimize fields, encrypt, tenant scope, retention policy       |
-| Calculation output  | Versioned and reproducible                      | Immutable assumptions, engine version, test evidence           |
-| Public facts        | URL, observation/retrieval dates, stale flag    | Refresh SLA and source-specific validation                     |
-| Advisor judgment    | Explicit statement label                        | Named author, timestamp, human review                          |
-| AI suggestion       | Explicit statement label                        | Prompt/model version, schema validation, no autonomous action  |
-| Audit data          | Append-only hash chain                          | Restricted access and external immutable backup                |
-| Client Constitution | Versioned synthetic preferences and constraints | Dual approval, effective dating, change rationale              |
-| Decision Passport   | Immutable signed payload plus monitored state   | Asymmetric/KMS signing, key rotation, independent verification |
+| Class                | Demo behavior                                                           | Production control                                                   |
+| -------------------- | ----------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Household data       | Synthetic only                                                          | Minimize fields, encrypt, tenant scope, retention policy             |
+| Calculation output   | Versioned and reproducible                                              | Immutable assumptions, engine version, test evidence                 |
+| Public facts         | URL, observation/retrieval dates, stale flag                            | Refresh SLA and source-specific validation                           |
+| Advisor judgment     | Explicit statement label                                                | Named author, timestamp, human review                                |
+| AI suggestion        | Explicit statement label                                                | Prompt/model version, schema validation, no autonomous action        |
+| Audit data           | Append-only hash chain                                                  | Restricted access and external immutable backup                      |
+| Client Constitution  | Versioned synthetic preferences and constraints                         | Dual approval, effective dating, change rationale                    |
+| Decision Passport    | Immutable signed payload plus monitored state                           | Asymmetric/KMS signing, key rotation, independent verification       |
+| Household resilience | Deterministic output from household facts and an explicit stress vector | Versioned method, reviewed policy floors, reproducible shock library |
 
 ## Public connectors
 
@@ -22,13 +23,15 @@
 
 The demo checks SEC connectivity with a reference issuer but does not attach that issuer to the synthetic employer. This prevents accidental creation of false client provenance.
 
+NerdWallet's Consumer Financial Resilience Index is registered as dated external, population-level evidence. It is never joined into household facts and never changes the Household Optionality Score. The score is an independently named planning control calculated only from the household snapshot, Client Constitution, decision capital, and advisor-selected shock. See [ADR 005](adr/005-household-optionality-score.md).
+
 ## Staleness
 
 The connector retains both the economic observation date and retrieval timestamp. Recommendation policy evaluates observation age only when a statement actually cites that fact. Passport monitoring evaluates retrieval freshness, preventing a current monthly release from being mistaken for an unavailable feed merely because its observation period began earlier. Production should add source-specific release calendars.
 
 ## Decision Passport integrity
 
-The signed payload contains no mutable monitoring state. It locks the scenario run, Client Constitution, evidence ids, calculation references, policy/model versions, conflicts, alternatives, human-review audit event, and validity envelope. Demo verification uses an HMAC key held only by the Worker. A production deployment should use an asymmetric key in managed KMS/HSM, publish the verification key, rotate by `keyId`, and retain retired public keys for historical verification.
+The signed payload contains no mutable monitoring state. It locks the scenario run, Client Constitution, evidence ids, calculation references, policy/model versions, conflicts, alternatives, resilience assessment and stress vector when present, human-review audit event, and validity envelope. Demo verification uses an HMAC key held only by the Worker. A production deployment should use an asymmetric key in managed KMS/HSM, publish the verification key, rotate by `keyId`, and retain retired public keys for historical verification.
 
 ## LLM data boundary
 

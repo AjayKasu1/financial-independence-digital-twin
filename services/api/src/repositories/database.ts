@@ -42,6 +42,7 @@ interface ScenarioRunRow {
   readonly decision_capital_cents: number | null;
   readonly constitution_json: string | null;
   readonly analysis_json: string | null;
+  readonly resilience_json: string | null;
 }
 
 interface ConstitutionRow {
@@ -209,9 +210,11 @@ export class DatabaseRepository {
       )
       .bind(householdId)
       .first<ConstitutionRow>();
-    return row
-      ? parseJson<ClientConstitution>(row.constitution_json)
-      : { ...demoClientConstitution, householdId };
+    return normalizeConstitution(
+      row
+        ? parseJson<ClientConstitution>(row.constitution_json)
+        : { ...demoClientConstitution, householdId }
+    );
   }
 
   async listEvents(householdId?: string): Promise<readonly FinancialEvent[]> {
@@ -231,7 +234,7 @@ export class DatabaseRepository {
   async saveScenarioRun(run: ScenarioComparisonResponse): Promise<void> {
     await this.#db
       .prepare(
-        "INSERT INTO scenario_runs (id, household_id, trigger_event_id, created_at, assumptions_json, scenarios_json, conflicts_json, decision_capital_cents, constitution_json, analysis_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO scenario_runs (id, household_id, trigger_event_id, created_at, assumptions_json, scenarios_json, conflicts_json, decision_capital_cents, constitution_json, analysis_json, resilience_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
       )
       .bind(
         run.runId,
@@ -243,7 +246,8 @@ export class DatabaseRepository {
         JSON.stringify(run.conflicts),
         Math.round(run.decisionCapital * 100),
         JSON.stringify(run.clientConstitution),
-        JSON.stringify(run.analysis)
+        JSON.stringify(run.analysis),
+        run.resilience ? JSON.stringify(run.resilience) : null
       )
       .run();
   }
@@ -251,7 +255,7 @@ export class DatabaseRepository {
   async getScenarioRun(id: string): Promise<ScenarioComparisonResponse | null> {
     const row = await this.#db
       .prepare(
-        "SELECT id, household_id, trigger_event_id, created_at, scenarios_json, conflicts_json, decision_capital_cents, constitution_json, analysis_json FROM scenario_runs WHERE id = ?"
+        "SELECT id, household_id, trigger_event_id, created_at, scenarios_json, conflicts_json, decision_capital_cents, constitution_json, analysis_json, resilience_json FROM scenario_runs WHERE id = ?"
       )
       .bind(id)
       .first<ScenarioRunRow>();
@@ -272,7 +276,14 @@ export class DatabaseRepository {
         ? parseJson<ScenarioComparisonResponse["analysis"]>(row.analysis_json)
         : null,
       scenarios: parseJson<ScenarioResult[]>(row.scenarios_json),
-      conflicts: parseJson<ConflictFlag[]>(row.conflicts_json)
+      conflicts: parseJson<ConflictFlag[]>(row.conflicts_json),
+      ...(row.resilience_json
+        ? {
+            resilience: parseJson<NonNullable<ScenarioComparisonResponse["resilience"]>>(
+              row.resilience_json
+            )
+          }
+        : {})
     };
   }
 
@@ -527,6 +538,19 @@ export class DatabaseRepository {
       eventHash: row.event_hash
     }));
   }
+}
+
+function normalizeConstitution(constitution: ClientConstitution): ClientConstitution {
+  return {
+    ...constitution,
+    constraints: {
+      ...constitution.constraints,
+      minimumResilienceScore: constitution.constraints.minimumResilienceScore ?? 75,
+      minimumCreditFreeRunwayMonths: constitution.constraints.minimumCreditFreeRunwayMonths ?? 12,
+      maximumShockCreditRequired: constitution.constraints.maximumShockCreditRequired ?? 0,
+      minimumFeasibleOptions: constitution.constraints.minimumFeasibleOptions ?? 2
+    }
+  };
 }
 
 function parseJson<T>(value: string): T {

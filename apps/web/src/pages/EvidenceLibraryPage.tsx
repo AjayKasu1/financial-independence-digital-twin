@@ -13,6 +13,14 @@ import { api } from "../lib/api";
 import { date, percent } from "../lib/format";
 
 const demoHouseholdId = "household-patel-demo";
+const nerdWalletResilienceEvidence = {
+  score: 63.1,
+  observedAt: "2026-07-09T00:00:00.000Z",
+  publishedAt: "2026-07-21T00:00:00.000Z",
+  sampleSize: 2_089,
+  sourceUrl:
+    "https://investors.nerdwallet.com/news-releases/news-release-details/nerdwallets-july-2026-financial-resilience-index-hits-new-high"
+} as const;
 
 interface EvidenceLibraryData {
   readonly household: HouseholdResponse;
@@ -69,8 +77,8 @@ export function EvidenceLibraryPage() {
       <section className="metric-grid">
         <MetricCard
           label="Public observations"
-          value={String(data.live.observations.length)}
-          detail="Government-source records"
+          value={String(data.live.observations.length + 1)}
+          detail="Government + population context"
           tone="positive"
         />
         <MetricCard label="Client snapshots" value="1" detail="Synthetic household only" />
@@ -167,6 +175,36 @@ export function EvidenceLibraryPage() {
                 </a>
               </div>
             ))}
+
+            <div className="evidence-record">
+              <span className="evidence-record-icon public-evidence">
+                <Globe2 />
+              </span>
+              <div>
+                <div className="record-title-row">
+                  <strong>NerdWallet Consumer Financial Resilience Index</strong>
+                  <Badge tone="info">Population context only</Badge>
+                </div>
+                <p>
+                  July 2026 index {nerdWalletResilienceEvidence.score} · Survey sample{" "}
+                  {nerdWalletResilienceEvidence.sampleSize.toLocaleString()} U.S. adults. This
+                  evidence is never an input to the Household Optionality Score.
+                </p>
+                <span>
+                  Observed {date(nerdWalletResilienceEvidence.observedAt)} · Published{" "}
+                  {date(nerdWalletResilienceEvidence.publishedAt)} · Official NerdWallet release
+                </span>
+              </div>
+              <a
+                className="record-source-link"
+                href={nerdWalletResilienceEvidence.sourceUrl}
+                target="_blank"
+                rel="noreferrer"
+                aria-label="Open NerdWallet Financial Resilience Index source"
+              >
+                <ExternalLink size={16} />
+              </a>
+            </div>
           </div>
         </article>
 

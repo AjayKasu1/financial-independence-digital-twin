@@ -2,8 +2,11 @@ import {
   ArrowRight,
   BriefcaseBusiness,
   CalendarClock,
+  Gauge,
   Home,
   Landmark,
+  ShieldCheck,
+  Umbrella,
   WalletCards
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -99,6 +102,47 @@ export function HouseholdPage() {
         />
       </section>
       <section className="twin-grid">
+        <article
+          className={`panel household-resilience band-${data.resilience.band.toLowerCase()} span-2`}
+        >
+          <div className="household-resilience-score">
+            <span>Household Optionality Score</span>
+            <strong>{data.resilience.score}</strong>
+            <Badge tone={data.resilience.breaches.length ? "warn" : "good"}>
+              {data.resilience.band}
+            </Badge>
+          </div>
+          <div className="household-resilience-copy">
+            <span className="eyebrow">Preparedness control · Deterministic</span>
+            <h2>How many choices survive when conditions change?</h2>
+            <p>
+              The canonical twin preserves {data.resilience.metrics.feasibleOptions} modeled uses of
+              capital with {data.resilience.metrics.creditFreeRunwayMonths.toFixed(1)} months of
+              credit-free runway. This is a household planning control—not a consumer index.
+            </p>
+            <div className="household-resilience-floors">
+              <span>
+                <ShieldCheck /> Score floor {data.resilience.policy.minimumScore}
+              </span>
+              <span>
+                <WalletCards /> {currency.format(data.resilience.metrics.accessibleLiquidityAfter)}{" "}
+                accessible
+              </span>
+              <span>
+                <Gauge /> {currency.format(data.resilience.metrics.creditRequired)} credit required
+              </span>
+            </div>
+          </div>
+        </article>
+        <article className="panel resilience-entry-card">
+          <Umbrella />
+          <span className="eyebrow">Advisor workbench</span>
+          <h2>Stress the household—not the client record.</h2>
+          <p>Test an income gap, employer-stock fall, market drawdown, or compound emergency.</p>
+          <Link className="button secondary full" to="/workbench?mode=resilience">
+            Open Resilience Mode <ArrowRight size={14} />
+          </Link>
+        </article>
         <article className="panel span-2">
           <div className="panel-heading">
             <div>

@@ -4,9 +4,14 @@ import {
   type ComplianceDecision,
   type RecommendationDraft
 } from "@fidt/contracts";
-import type { ConflictFlag, HouseholdSnapshot, ScenarioResult } from "@fidt/domain";
+import type {
+  ConflictFlag,
+  HouseholdResilienceComparison,
+  HouseholdSnapshot,
+  ScenarioResult
+} from "@fidt/domain";
 
-export const PROMPT_VERSION = "recommendation-v1.0.0";
+export const PROMPT_VERSION = "recommendation-v1.1.0";
 export const FALLBACK_MODEL_ID = "deterministic-template-v1";
 
 export interface RecommendationContext {
@@ -14,6 +19,7 @@ export interface RecommendationContext {
   readonly scenarios: readonly ScenarioResult[];
   readonly conflicts: readonly ConflictFlag[];
   readonly citations: readonly Citation[];
+  readonly resilience?: HouseholdResilienceComparison;
   readonly advisorRationale?: string;
   readonly complianceFeedback?: Pick<ComplianceDecision, "status" | "reasons" | "requiredActions">;
   readonly now?: Date;
@@ -182,7 +188,22 @@ export function createDeterministicRecommendation(
         text: "Confirm tax, liquidity, implementation, and household-preference details before acting.",
         citationIds: [],
         calculationRefs: []
-      }
+      },
+      ...(context.resilience
+        ? [
+            {
+              id: "statement-household-optionality",
+              label: "DETERMINISTIC_CALCULATION" as const,
+              text: `Under the recorded resilience stress, the Household Optionality Score is ${context.resilience.stressed.score.toFixed(1)} (${context.resilience.stressed.band.toLowerCase()}) with ${context.resilience.stressed.metrics.feasibleOptions} feasible capital option(s) and ${formatCurrency(context.resilience.stressed.metrics.creditRequired)} of modeled credit required.`,
+              citationIds: [calculationCitation.id],
+              calculationRefs: [
+                "resilience.stressed.score",
+                "resilience.stressed.metrics.feasibleOptions",
+                "resilience.stressed.metrics.creditRequired"
+              ]
+            }
+          ]
+        : [])
     ],
     citations: [...context.citations, calculationCitation],
     alternativesConsidered: alternatives.map((scenario) => scenario.label),
@@ -196,7 +217,7 @@ export function createDeterministicRecommendation(
 
 const SYSTEM_PROMPT = `You are a drafting assistant for a fiduciary financial advisor.
 Return only a JSON object matching the requested recommendation structure.
-Never calculate, estimate, or change a numeric value. Use only values in scenarioOutputs.
+Never calculate, estimate, or change a numeric value. Use only values in scenarioOutputs and resilienceOutput.
 Never recommend a scenario where capitalUse.feasible is false.
 Every factual or calculated statement must cite an allowed citation id and calculated claims must include a calculationRefs path.
 Label each statement as CLIENT_FACT, DETERMINISTIC_CALCULATION, EXTERNAL_FACT, PLANNING_ASSUMPTION, ADVISOR_JUDGMENT, or AI_SUGGESTION.
@@ -277,6 +298,7 @@ function toPromptPayload(context: RecommendationContext): Record<string, unknown
       goals: context.household.goals
     },
     scenarioOutputs: context.scenarios,
+    resilienceOutput: context.resilience ?? null,
     conflicts: context.conflicts,
     allowedCitations: context.citations,
     advisorRationale: context.advisorRationale ?? null,

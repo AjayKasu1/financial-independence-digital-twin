@@ -7,4 +7,5 @@ export * from "./money";
 export * from "./portfolio";
 export * from "./random";
 export * from "./real-estate";
+export * from "./resilience";
 export * from "./scenario-engine";

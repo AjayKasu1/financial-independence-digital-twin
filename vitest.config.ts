@@ -9,7 +9,7 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "json-summary", "html"],
       include: [
-        "packages/domain/src/{fees,financial-independence,money,portfolio,real-estate,scenario-engine}.ts",
+        "packages/domain/src/{fees,financial-independence,money,portfolio,real-estate,resilience,scenario-engine}.ts",
         "packages/ai-orchestrator/src/index.ts",
         "packages/policy-engine/src/index.ts"
       ],

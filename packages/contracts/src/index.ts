@@ -4,6 +4,8 @@ import type {
   ConflictFlag as DomainConflictFlag,
   DecisionAnalysis as DomainDecisionAnalysis,
   FinancialEvent as DomainFinancialEvent,
+  HouseholdResilienceAssessment as DomainHouseholdResilienceAssessment,
+  HouseholdResilienceComparison as DomainHouseholdResilienceComparison,
   HouseholdSnapshot as DomainHouseholdSnapshot,
   ScenarioResult as DomainScenarioResult
 } from "@fidt/domain";
@@ -16,6 +18,9 @@ export type {
   FeeSchedule,
   FinancialEvent,
   HouseholdSnapshot,
+  HouseholdResilienceAssessment,
+  HouseholdResilienceComparison,
+  ResilienceShock,
   ScenarioResult,
   StrategyRequest,
   StrategyType
@@ -91,9 +96,20 @@ export const strategyRequestSchema = z.object({
   mixed: mixedStrategySchema.optional()
 });
 
+export const resilienceShockSchema = z.object({
+  emergencyExpense: z.number().finite().min(0).max(10_000_000),
+  incomeLossPercent: rate,
+  incomeLossMonths: z.number().finite().min(0).max(36),
+  employerStockDecline: rate,
+  broadMarketDecline: rate,
+  spendingIncreaseRate: rate
+});
+
 export const scenarioComparisonRequestSchema = z
   .object({
     decisionCapital: z.number().finite().positive().max(100_000_000),
+    preShockDecisionCapital: z.number().finite().positive().max(100_000_000).optional(),
+    resilienceShock: resilienceShockSchema.optional(),
     strategies: z.array(strategyRequestSchema).min(2).max(4),
     triggerEventId: z.string().min(1).optional(),
     assumptions: z
@@ -142,7 +158,15 @@ export const workbenchRequestSchema = z.object({
   maxRealEstateHoursPerMonth: z.number().finite().min(0).max(80),
   rentalPurchasePrice: z.number().finite().positive().max(20_000_000),
   monthlyMarketRent: z.number().finite().min(0).max(100_000),
-  mortgageRate: z.number().finite().min(0).max(0.25)
+  mortgageRate: z.number().finite().min(0).max(0.25),
+  resilienceShock: resilienceShockSchema.default({
+    emergencyExpense: 0,
+    incomeLossPercent: 0,
+    incomeLossMonths: 0,
+    employerStockDecline: 0,
+    broadMarketDecline: 0,
+    spendingIncreaseRate: 0
+  })
 });
 
 export type WorkbenchRequest = z.infer<typeof workbenchRequestSchema>;
@@ -246,6 +270,7 @@ export interface HouseholdResponse {
   readonly clientConstitution: DomainClientConstitution;
   readonly events: readonly DomainFinancialEvent[];
   readonly latestScenarios: readonly DomainScenarioResult[];
+  readonly resilience: DomainHouseholdResilienceAssessment;
 }
 
 export interface ScenarioComparisonResponse {
@@ -258,6 +283,21 @@ export interface ScenarioComparisonResponse {
   readonly analysis: DomainDecisionAnalysis | null;
   readonly scenarios: readonly DomainScenarioResult[];
   readonly conflicts: readonly DomainConflictFlag[];
+  readonly resilience?: DomainHouseholdResilienceComparison;
+}
+
+export interface PublicResilienceContext {
+  readonly source: "NerdWallet Consumer Financial Resilience Index";
+  readonly score: number;
+  readonly observedAt: string;
+  readonly publishedAt: string;
+  readonly retrievedAt: string;
+  readonly creditReliancePercent: number;
+  readonly thousandDollarCashCoveragePercent: number;
+  readonly sampleSize: number;
+  readonly sourceUrl: string;
+  readonly methodology: string;
+  readonly usageBoundary: string;
 }
 
 export interface WorkbenchResponse {
@@ -270,6 +310,8 @@ export interface WorkbenchResponse {
   readonly analysis: DomainDecisionAnalysis | null;
   readonly scenarios: readonly DomainScenarioResult[];
   readonly conflicts: readonly DomainConflictFlag[];
+  readonly resilience: DomainHouseholdResilienceComparison;
+  readonly publicContext: PublicResilienceContext;
 }
 
 export interface RecommendationResponse {
@@ -328,6 +370,10 @@ export type ValidityMetric =
   | "REAL_ESTATE_HOURS"
   | "FI_SUCCESS_PROBABILITY"
   | "FI_AGE"
+  | "RESILIENCE_SCORE"
+  | "CREDIT_FREE_RUNWAY_MONTHS"
+  | "SHOCK_CREDIT_REQUIRED"
+  | "FEASIBLE_OPTIONS"
   | "PUBLIC_DATA_AGE_DAYS";
 
 export interface ValidityCondition {
@@ -360,6 +406,7 @@ export interface DecisionPassportPayload {
   };
   readonly constitution: DomainClientConstitution;
   readonly decisionCapital: number;
+  readonly resilience?: DomainHouseholdResilienceComparison;
   readonly alternativesConsidered: readonly string[];
   readonly conflictsDisclosed: readonly string[];
   readonly validityEnvelope: readonly ValidityCondition[];
@@ -423,6 +470,10 @@ export const passportMonitorRequestSchema = z.object({
         "REAL_ESTATE_HOURS",
         "FI_SUCCESS_PROBABILITY",
         "FI_AGE",
+        "RESILIENCE_SCORE",
+        "CREDIT_FREE_RUNWAY_MONTHS",
+        "SHOCK_CREDIT_REQUIRED",
+        "FEASIBLE_OPTIONS",
         "PUBLIC_DATA_AGE_DAYS"
       ]),
       z.number().finite()

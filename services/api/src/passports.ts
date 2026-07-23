@@ -11,7 +11,11 @@ import type {
   ValidityCondition,
   ValidityMetric
 } from "@fidt/contracts";
-import type { HouseholdSnapshot } from "@fidt/domain";
+import {
+  evaluateHouseholdResilience,
+  type HouseholdSnapshot,
+  type ResilienceOption
+} from "@fidt/domain";
 import type { StoredDecisionPassport } from "./repositories/database";
 
 const encoder = new TextEncoder();
@@ -50,6 +54,7 @@ export async function issueDecisionPassport(
     },
     constitution: input.run.clientConstitution,
     decisionCapital: input.run.decisionCapital,
+    ...(input.run.resilience ? { resilience: input.run.resilience } : {}),
     alternativesConsidered: input.recommendation.alternativesConsidered,
     conflictsDisclosed: input.recommendation.conflictsDisclosed,
     validityEnvelope: buildValidityEnvelope(input.run, input.household, scenario),
@@ -130,11 +135,33 @@ export function observationsForPassport(
   const envelopeBaseline = Object.fromEntries(
     passport.validityEnvelope.map((condition) => [condition.metric, condition.baselineValue])
   ) as Partial<Record<ValidityMetric, number>>;
+  const resilience = passport.resilience
+    ? evaluateHouseholdResilience(
+        household,
+        passport.constitution,
+        passport.resilience.stressed.shock,
+        passport.resilience.stressed.metrics.originalDecisionCapital,
+        passport.resilience.stressed.optionTests.map((option): ResilienceOption => ({
+          id: option.id,
+          label: option.label,
+          capitalRequired: option.capitalRequired
+        })),
+        now
+      )
+    : null;
   return {
     ...envelopeBaseline,
     ...(treasury ? { MORTGAGE_RATE: treasury.value + 0.0225 } : {}),
     LIQUID_ASSETS: liquidAssets,
     EMPLOYER_STOCK_PERCENT: holdingValue === 0 ? 0 : employerStock / holdingValue,
+    ...(resilience
+      ? {
+          RESILIENCE_SCORE: resilience.score,
+          CREDIT_FREE_RUNWAY_MONTHS: resilience.metrics.creditFreeRunwayMonths,
+          SHOCK_CREDIT_REQUIRED: resilience.metrics.creditRequired,
+          FEASIBLE_OPTIONS: resilience.metrics.feasibleOptions
+        }
+      : {}),
     ...(publicAges.length ? { PUBLIC_DATA_AGE_DAYS: Math.max(...publicAges) } : {})
   };
 }
@@ -264,6 +291,55 @@ function buildValidityEnvelope(
       "Public feeds not successfully refreshed within 45 days require renewed review."
     )
   ];
+  if (run.resilience) {
+    const stressed = run.resilience.stressed;
+    conditions.push(
+      condition(
+        "resilience-score",
+        "RESILIENCE_SCORE",
+        "Minimum Household Optionality Score",
+        "GTE",
+        stressed.policy.minimumScore,
+        stressed.score,
+        "NUMBER",
+        "DETERMINISTIC_CALCULATION",
+        "Reopen the advice when the approved household shock falls below the signed resilience floor."
+      ),
+      condition(
+        "credit-free-runway",
+        "CREDIT_FREE_RUNWAY_MONTHS",
+        "Minimum credit-free runway",
+        "GTE",
+        stressed.policy.minimumCreditFreeRunwayMonths,
+        stressed.metrics.creditFreeRunwayMonths,
+        "NUMBER",
+        "DETERMINISTIC_CALCULATION",
+        "Accessible liquidity must preserve the client-approved spending runway under the recorded shock."
+      ),
+      condition(
+        "shock-credit-required",
+        "SHOCK_CREDIT_REQUIRED",
+        "Maximum credit required under shock",
+        "LTE",
+        stressed.policy.maximumShockCreditRequired,
+        stressed.metrics.creditRequired,
+        "CURRENCY",
+        "DETERMINISTIC_CALCULATION",
+        "The approved decision may not silently depend on unplanned consumer credit."
+      ),
+      condition(
+        "feasible-options",
+        "FEASIBLE_OPTIONS",
+        "Minimum feasible options",
+        "GTE",
+        stressed.policy.minimumFeasibleOptions,
+        stressed.metrics.feasibleOptions,
+        "NUMBER",
+        "DETERMINISTIC_CALCULATION",
+        "The household must retain the signed minimum number of feasible capital choices."
+      )
+    );
+  }
   if (!analysis) return conditions;
   const rental = analysis.rentalSnapshot;
   if (scenario.strategy === "RENTAL") {

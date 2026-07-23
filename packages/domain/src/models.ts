@@ -119,6 +119,10 @@ export interface ClientConstitution {
     readonly maxRealEstateHoursPerMonth: number;
     readonly targetFiAge: number;
     readonly minimumFiSuccessProbability: number;
+    readonly minimumResilienceScore?: number;
+    readonly minimumCreditFreeRunwayMonths?: number;
+    readonly maximumShockCreditRequired?: number;
+    readonly minimumFeasibleOptions?: number;
   };
   readonly preferences: {
     readonly riskTolerance: HouseholdPreferences["riskTolerance"];
@@ -146,6 +150,104 @@ export interface HouseholdSnapshot {
   readonly goals: readonly Goal[];
   readonly preferences: HouseholdPreferences;
   readonly annualSpending: number;
+}
+
+export interface ResilienceShock {
+  readonly emergencyExpense: number;
+  readonly incomeLossPercent: number;
+  readonly incomeLossMonths: number;
+  readonly employerStockDecline: number;
+  readonly broadMarketDecline: number;
+  readonly spendingIncreaseRate: number;
+}
+
+export interface ResilienceOption {
+  readonly id: string;
+  readonly label: string;
+  readonly capitalRequired: number;
+}
+
+export type ResilienceBand = "FORTIFIED" | "RESILIENT" | "EXPOSED" | "FRAGILE";
+
+export type ResilienceComponentId =
+  | "LIQUID_RUNWAY"
+  | "LIQUIDITY_FLOOR"
+  | "SHOCK_ABSORPTION"
+  | "INCOME_CONTINUITY"
+  | "CONCENTRATION"
+  | "OPTIONS_REMAINING";
+
+export interface ResilienceComponent {
+  readonly id: ResilienceComponentId;
+  readonly label: string;
+  readonly score: number;
+  readonly weight: number;
+  readonly actual: number;
+  readonly target: number;
+  readonly unit: "CURRENCY" | "MONTHS" | "RATE" | "COUNT";
+  readonly passed: boolean;
+  readonly explanation: string;
+}
+
+export interface ResilienceBreach {
+  readonly code:
+    | "SCORE_BELOW_FLOOR"
+    | "RUNWAY_BELOW_FLOOR"
+    | "LIQUIDITY_FLOOR"
+    | "CREDIT_REQUIRED"
+    | "OPTIONS_BELOW_FLOOR"
+    | "CONCENTRATION_LIMIT";
+  readonly severity: "MEDIUM" | "HIGH";
+  readonly message: string;
+}
+
+export interface ResilienceOptionTest extends ResilienceOption {
+  readonly availableCapital: number;
+  readonly feasible: boolean;
+  readonly shortfall: number;
+}
+
+export interface HouseholdResilienceAssessment {
+  readonly methodologyVersion: "household-optionality-v1";
+  readonly calculatedAt: string;
+  readonly shock: ResilienceShock;
+  readonly score: number;
+  readonly band: ResilienceBand;
+  readonly policy: {
+    readonly minimumScore: number;
+    readonly minimumCreditFreeRunwayMonths: number;
+    readonly maximumShockCreditRequired: number;
+    readonly minimumFeasibleOptions: number;
+  };
+  readonly metrics: {
+    readonly annualIncome: number;
+    readonly annualSpending: number;
+    readonly cashReserveBefore: number;
+    readonly cashReserveAfter: number;
+    readonly taxableLiquidityAfter: number;
+    readonly accessibleLiquidityBefore: number;
+    readonly accessibleLiquidityAfter: number;
+    readonly creditFreeRunwayMonths: number;
+    readonly shockFundingNeed: number;
+    readonly creditRequired: number;
+    readonly largestCreditFreeShock: number;
+    readonly employerStockPercent: number;
+    readonly originalDecisionCapital: number;
+    readonly availableDecisionCapital: number;
+    readonly feasibleOptions: number;
+  };
+  readonly components: readonly ResilienceComponent[];
+  readonly optionTests: readonly ResilienceOptionTest[];
+  readonly breaches: readonly ResilienceBreach[];
+}
+
+export interface HouseholdResilienceComparison {
+  readonly baseline: HouseholdResilienceAssessment;
+  readonly stressed: HouseholdResilienceAssessment;
+  readonly scoreDelta: number;
+  readonly optionsLost: number;
+  readonly firstFailure: ResilienceComponent | null;
+  readonly definition: string;
 }
 
 export type FinancialEventType =

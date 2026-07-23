@@ -1,10 +1,13 @@
 import type { WorkbenchRequest, WorkbenchResponse } from "@fidt/contracts";
 import {
   analyzeDecision,
+  applyResilienceShock,
   calculateAnnualAdvisoryFee,
+  compareHouseholdResilience,
   demoAssumptions,
   demoFeeSchedule,
   detectAdvisorRevenueConflict,
+  resilienceOptionsForStrategies,
   runScenarioComparison,
   type ClientConstitution,
   type ConflictFlag,
@@ -20,8 +23,18 @@ export function runAdvisorWorkbench(
 ): WorkbenchResponse {
   const sandboxHousehold = applyHouseholdOverrides(household, input);
   const sandboxConstitution = applyConstitutionOverrides(constitution, input);
+  const baseStrategies = workbenchStrategies(input, input.rsuVestAmount);
+  const resilience = compareHouseholdResilience(
+    sandboxHousehold,
+    sandboxConstitution,
+    input.resilienceShock,
+    input.rsuVestAmount,
+    resilienceOptionsForStrategies(sandboxHousehold, baseStrategies, input.rsuVestAmount)
+  );
+  const stressedHousehold = applyResilienceShock(sandboxHousehold, resilience.stressed);
+  const availableDecisionCapital = resilience.stressed.metrics.availableDecisionCapital;
   const decisionContext: DecisionContext = {
-    decisionCapital: input.rsuVestAmount,
+    decisionCapital: availableDecisionCapital,
     constitution: sandboxConstitution
   };
   const assumptions = {
@@ -33,16 +46,16 @@ export function runAdvisorWorkbench(
     // canonical higher-path assumption set before anything can be approved.
     simulationPaths: 240
   };
-  const strategies = workbenchStrategies(input);
+  const strategies = workbenchStrategies(input, availableDecisionCapital);
   const scenarios = runScenarioComparison(
-    sandboxHousehold,
+    stressedHousehold,
     strategies,
     assumptions,
     demoFeeSchedule,
     decisionContext
   );
   const analysis = analyzeDecision(
-    sandboxHousehold,
+    stressedHousehold,
     strategies,
     assumptions,
     demoFeeSchedule,
@@ -68,7 +81,9 @@ export function runAdvisorWorkbench(
     clientConstitution: sandboxConstitution,
     analysis,
     scenarios,
-    conflicts
+    conflicts,
+    resilience,
+    publicContext: publicResilienceContext()
   };
 }
 
@@ -117,7 +132,10 @@ function applyConstitutionOverrides(
   };
 }
 
-function workbenchStrategies(input: WorkbenchRequest): readonly StrategyRequest[] {
+function workbenchStrategies(
+  input: WorkbenchRequest,
+  availableDecisionCapital: number
+): readonly StrategyRequest[] {
   return [
     {
       type: "RENTAL",
@@ -144,7 +162,7 @@ function workbenchStrategies(input: WorkbenchRequest): readonly StrategyRequest[
     {
       type: "PORTFOLIO",
       portfolio: {
-        initialInvestment: input.rsuVestAmount,
+        initialInvestment: availableDecisionCapital,
         annualContribution: 0,
         equityAllocation: 0.75,
         bondAllocation: 0.2,
@@ -156,10 +174,28 @@ function workbenchStrategies(input: WorkbenchRequest): readonly StrategyRequest[
       type: "DEBT_PAYDOWN",
       debt: {
         liabilityId: "liability-student",
-        lumpSum: Math.min(42_000, input.rsuVestAmount)
+        lumpSum: Math.min(42_000, availableDecisionCapital)
       }
     }
   ];
+}
+
+function publicResilienceContext(): WorkbenchResponse["publicContext"] {
+  return {
+    source: "NerdWallet Consumer Financial Resilience Index",
+    score: 63.1,
+    observedAt: "2026-07-09",
+    publishedAt: "2026-07-21",
+    retrievedAt: new Date().toISOString(),
+    creditReliancePercent: 33,
+    thousandDollarCashCoveragePercent: 65,
+    sampleSize: 2_089,
+    sourceUrl: "https://www.nerdwallet.com/finance/studies/financial-resilience-index",
+    methodology:
+      "Five equally weighted survey questions across financial security, financial strength, and economic outlook.",
+    usageBoundary:
+      "Population context only. It is not an input to the Household Optionality Score and is never applied to an individual client."
+  };
 }
 
 function uniqueConflicts(conflicts: readonly ConflictFlag[]): ConflictFlag[] {

@@ -208,7 +208,11 @@ export const demoClientConstitution: ClientConstitution = {
     maxEmployerStockPercent: 0.25,
     maxRealEstateHoursPerMonth: 8,
     targetFiAge: 52,
-    minimumFiSuccessProbability: 0.72
+    minimumFiSuccessProbability: 0.72,
+    minimumResilienceScore: 75,
+    minimumCreditFreeRunwayMonths: 12,
+    maximumShockCreditRequired: 0,
+    minimumFeasibleOptions: 2
   },
   preferences: {
     riskTolerance: "GROWTH",

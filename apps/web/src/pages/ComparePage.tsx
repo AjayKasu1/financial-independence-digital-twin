@@ -15,6 +15,8 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import type {
   ClientConstitution,
   FinancialEvent,
+  HouseholdResilienceComparison,
+  ResilienceShock,
   ScenarioComparisonResponse,
   ScenarioComparisonRequest
 } from "@fidt/contracts";
@@ -69,6 +71,12 @@ function CompareWorkflow({
   const request = useMemo<ScenarioComparisonRequest>(
     () => ({
       decisionCapital: capital,
+      ...(hasActiveShock(preset.resilienceShock)
+        ? {
+            preShockDecisionCapital: preset.preShockDecisionCapital,
+            resilienceShock: preset.resilienceShock
+          }
+        : {}),
       ...(triggerEventId ? { triggerEventId } : {}),
       strategies: [
         {
@@ -110,7 +118,7 @@ function CompareWorkflow({
         }
       ]
     }),
-    [capital, purchasePrice, rent, mortgageRate, propertyHours, triggerEventId]
+    [capital, purchasePrice, rent, mortgageRate, propertyHours, triggerEventId, preset]
   );
   const run = () => {
     setLoading(true);
@@ -163,7 +171,10 @@ function CompareWorkflow({
             <strong>Session assumptions ready for governed review</strong>
             <p>
               No record exists yet. Running this comparison restores the signed Client Constitution
-              and creates a versioned audit event.
+              and creates a versioned audit event
+              {hasActiveShock(preset.resilienceShock)
+                ? " with the selected resilience stress locked into the run."
+                : "."}
             </p>
           </div>
           <Badge tone="info">Unsaved</Badge>
@@ -225,6 +236,25 @@ function CompareWorkflow({
             onChange={setPropertyHours}
             step={1}
           />
+          {hasActiveShock(preset.resilienceShock) ? (
+            <div className="resilience-promotion-summary">
+              <div>
+                <ShieldCheck size={16} />
+                <strong>Resilience stress locked</strong>
+              </div>
+              <span>
+                {preset.resilienceShock.incomeLossMonths} months ·{" "}
+                {percent.format(preset.resilienceShock.incomeLossPercent)} income reduction
+              </span>
+              <span>
+                {fullCurrency.format(preset.resilienceShock.emergencyExpense)} emergency ·{" "}
+                {percent.format(preset.resilienceShock.broadMarketDecline)} market decline
+              </span>
+              <small>
+                Pre-shock decision capital: {fullCurrency.format(preset.preShockDecisionCapital)}
+              </small>
+            </div>
+          ) : null}
           {constitution ? <ConstitutionCard constitution={constitution} /> : null}
           <div className="assumption-note">
             <AlertTriangle size={16} />
@@ -297,6 +327,7 @@ function ScenarioResults({
           <ArrowRight size={16} />
         </Link>
       </div>
+      {result.resilience ? <GovernedResilienceResult resilience={result.resilience} /> : null}
       <div className="scenario-grid">
         {result.scenarios.map((scenario) => (
           <article
@@ -417,12 +448,59 @@ function ScenarioResults({
   );
 }
 
+function GovernedResilienceResult({ resilience }: { resilience: HouseholdResilienceComparison }) {
+  const stressed = resilience.stressed;
+  return (
+    <article className="governed-resilience-result">
+      <div className="governed-resilience-score">
+        <Gauge />
+        <span>Household Optionality Score</span>
+        <strong>{stressed.score.toFixed(1)}</strong>
+        <Badge tone={stressed.breaches.length ? "warn" : "good"}>{stressed.band}</Badge>
+      </div>
+      <dl>
+        <div>
+          <dt>Score change</dt>
+          <dd>{resilience.scoreDelta.toFixed(1)} pts</dd>
+        </div>
+        <div>
+          <dt>Credit-free runway</dt>
+          <dd>{stressed.metrics.creditFreeRunwayMonths.toFixed(1)} mo</dd>
+        </div>
+        <div>
+          <dt>Capital preserved</dt>
+          <dd>{fullCurrency.format(stressed.metrics.availableDecisionCapital)}</dd>
+        </div>
+        <div>
+          <dt>Credit required</dt>
+          <dd>{fullCurrency.format(stressed.metrics.creditRequired)}</dd>
+        </div>
+      </dl>
+      <div className={`governed-resilience-status ${stressed.breaches.length ? "breach" : "pass"}`}>
+        {stressed.breaches.length ? <AlertTriangle /> : <CheckCircle2 />}
+        <div>
+          <strong>
+            {stressed.breaches.length
+              ? `${stressed.breaches.length} signed resilience control(s) breached`
+              : "All signed resilience controls preserved"}
+          </strong>
+          <span>
+            This deterministic stress record will enter compliance review and the Decision Passport.
+          </span>
+        </div>
+      </div>
+    </article>
+  );
+}
+
 interface DecisionPreset {
   capital: number;
+  preShockDecisionCapital: number;
   purchasePrice: number;
   rent: number;
   mortgageRate: number;
   propertyHours: number;
+  resilienceShock: ResilienceShock;
 }
 
 function decisionPreset(eventId: string, search: URLSearchParams): DecisionPreset {
@@ -430,37 +508,71 @@ function decisionPreset(eventId: string, search: URLSearchParams): DecisionPrese
   if (fromWorkbench) {
     return {
       capital: queryNumber(search, "capital", 71_000, 1, 100_000_000),
+      preShockDecisionCapital: queryNumber(search, "originalCapital", 71_000, 1, 100_000_000),
       purchasePrice: queryNumber(search, "price", 525_000, 1, 20_000_000),
       rent: queryNumber(search, "rent", 3_650, 0, 100_000),
       mortgageRate: queryNumber(search, "rate", 6.75, 0, 25),
-      propertyHours: queryNumber(search, "hours", 6, 0, 80)
+      propertyHours: queryNumber(search, "hours", 6, 0, 80),
+      resilienceShock: shockFromQuery(search)
     };
   }
   if (eventId === "event-rsu-vest") {
     return {
       capital: 71_000,
+      preShockDecisionCapital: 71_000,
       purchasePrice: 525_000,
       rent: 3_650,
       mortgageRate: 6.75,
-      propertyHours: 6
+      propertyHours: 6,
+      resilienceShock: emptyShock()
     };
   }
   if (eventId === "event-concentration") {
     return {
       capital: 292_000,
+      preShockDecisionCapital: 292_000,
       purchasePrice: 625_000,
       rent: 4_100,
       mortgageRate: 6.75,
-      propertyHours: 6
+      propertyHours: 6,
+      resilienceShock: emptyShock()
     };
   }
   return {
     capital: 147_000,
+    preShockDecisionCapital: 147_000,
     purchasePrice: 525_000,
     rent: 3_650,
     mortgageRate: 6.75,
-    propertyHours: 6
+    propertyHours: 6,
+    resilienceShock: emptyShock()
   };
+}
+
+function shockFromQuery(search: URLSearchParams): ResilienceShock {
+  return {
+    emergencyExpense: queryNumber(search, "shockEmergency", 0, 0, 10_000_000),
+    incomeLossPercent: queryNumber(search, "shockIncome", 0, 0, 1),
+    incomeLossMonths: queryNumber(search, "shockMonths", 0, 0, 36),
+    employerStockDecline: queryNumber(search, "shockEmployer", 0, 0, 1),
+    broadMarketDecline: queryNumber(search, "shockMarket", 0, 0, 1),
+    spendingIncreaseRate: queryNumber(search, "shockSpending", 0, 0, 1)
+  };
+}
+
+function emptyShock(): ResilienceShock {
+  return {
+    emergencyExpense: 0,
+    incomeLossPercent: 0,
+    incomeLossMonths: 0,
+    employerStockDecline: 0,
+    broadMarketDecline: 0,
+    spendingIncreaseRate: 0
+  };
+}
+
+function hasActiveShock(shock: ResilienceShock): boolean {
+  return Object.values(shock).some((value) => value > 0);
 }
 
 function queryNumber(

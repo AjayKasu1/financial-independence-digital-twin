@@ -104,6 +104,14 @@ export function PassportPage() {
               {fullCurrency.format(passport.recommendedScenario.firstYearAdvisoryFee)}
             </strong>
           </div>
+          {passport.resilience ? (
+            <div className="passport-resilience-metric">
+              <span>Optionality at approval</span>
+              <strong>
+                {passport.resilience.stressed.score} · {passport.resilience.stressed.band}
+              </strong>
+            </div>
+          ) : null}
         </div>
       </section>
 
@@ -174,6 +182,22 @@ export function PassportPage() {
             <p>{passport.constitution.preferences.values.join(" · ")}</p>
             <span>Approved by {passport.constitution.approvedBy}</span>
           </article>
+          {passport.resilience ? (
+            <article className="panel passport-resilience-proof">
+              <ShieldCheck />
+              <span className="eyebrow">Resilience proof</span>
+              <h2>{passport.resilience.stressed.score}/100 optionality</h2>
+              <p>
+                {passport.resilience.stressed.metrics.creditFreeRunwayMonths.toFixed(1)} months
+                credit-free runway · {passport.resilience.stressed.metrics.feasibleOptions} options
+                preserved
+              </p>
+              <span>
+                Method {passport.resilience.stressed.methodologyVersion} · Shock inputs signed with
+                this passport
+              </span>
+            </article>
+          ) : null}
           <article className="panel lineage-card">
             <FileKey2 />
             <span className="eyebrow">Proof bundle</span>

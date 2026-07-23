@@ -11,6 +11,8 @@ This is a production-shaped demonstration, not financial advice. The included Pa
 - One shared decision-capital constraint is enforced across every alternative; infeasible strategies cannot be recommended or approved.
 - The Decision Lab calculates deterministic mortgage/rent crossover boundaries, capital feasibility, and a 3 × 3 sensitivity surface.
 - The Advisor Workbench provides a session-only, non-destructive what-if space that reuses the same deterministic engines without creating an audit record; selected economics can then be promoted into governed review.
+- Resilience Mode applies explicit household shocks—income interruption, emergency spending, employer-stock decline, market drawdown, and spending inflation—to a transparent six-control Household Optionality Score.
+- The score measures whether signed liquidity, credit-free runway, concentration, and decision-option floors survive. It is not NerdWallet's population-level Financial Resilience Index; dated FRI observations appear only as external context.
 - A versioned Client Constitution turns liquidity, concentration, workload, FI-age, and modeled-success preferences into executable controls.
 - A recommendation statement is labeled as client fact, calculation, external fact, assumption, advisor judgment, or AI suggestion.
 - Public data has a source URL, observation date, retrieval date, and staleness state.
@@ -31,7 +33,10 @@ flowchart LR
   L["Treasury · BLS · FHFA · SEC"] --> B
   B --> C["Deterministic decision engines"]
   W["Advisor Workbench<br/>session-only"] --> C
+  W --> O["Household Optionality Score<br/>deterministic stress engine"]
+  N["NerdWallet FRI<br/>population context only"] -. "never a score input" .-> O
   C --> D["Scenario comparison"]
+  O --> D
   W -. "Promote selected economics" .-> D
   D --> E["AI explanation or deterministic fallback"]
   E --> F["Fiduciary policy gate"]
@@ -148,7 +153,7 @@ Keep the API contracts and deterministic packages unchanged. See [`docs/architec
 
 ## Current boundaries
 
-Included: synthetic household planning, a session-only Advisor Workbench, governed scenario promotion, shared-capital enforcement, executable client constraints, deterministic counterfactual boundaries, FI projection, rental underwriting, seeded portfolio simulations, debt comparison, fee conflicts, live public observations, governed recommendations, human review, signed Decision Passports, scheduled validity monitoring, automatic invalidation, and audit lineage.
+Included: synthetic household planning, a session-only Advisor Workbench, deterministic household stress testing and optionality scoring, governed scenario promotion, shared-capital enforcement, executable client constraints, deterministic counterfactual boundaries, FI projection, rental underwriting, seeded portfolio simulations, debt comparison, fee conflicts, live public observations, governed recommendations, human review, signed Decision Passports, scheduled validity monitoring, automatic invalidation, and audit lineage.
 
 Not included: brokerage connectivity, trading, individualized tax/legal advice, document OCR, multi-tenant billing, custodian write access, or production RIA books and records certification.
 
@@ -161,6 +166,8 @@ Not included: brokerage connectivity, trading, individualized tax/legal advice, 
 - [`docs/adr/001-deterministic-financial-core.md`](docs/adr/001-deterministic-financial-core.md)
 - [`docs/adr/002-cloudflare-portability.md`](docs/adr/002-cloudflare-portability.md)
 - [`docs/adr/003-governed-language-model.md`](docs/adr/003-governed-language-model.md)
+- [`docs/adr/004-live-decision-passport.md`](docs/adr/004-live-decision-passport.md)
+- [`docs/adr/005-household-optionality-score.md`](docs/adr/005-household-optionality-score.md)
 
 ## License
 

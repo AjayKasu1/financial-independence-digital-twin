@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { createDeterministicRecommendation } from "@fidt/ai-orchestrator";
 import {
   calculateAnnualAdvisoryFee,
+  compareHouseholdResilience,
   demoAssumptions,
+  demoClientConstitution,
   demoFeeSchedule,
   demoHousehold,
   demoStrategies,
@@ -155,6 +157,69 @@ describe("fiduciary policy engine", () => {
     expect(
       result.reasons.some((reason) => reason.code === "CAPITAL_INFEASIBLE_RECOMMENDATION")
     ).toBe(true);
+  });
+
+  it("blocks approval when a promoted resilience stress breaches the Constitution", () => {
+    const resilience = compareHouseholdResilience(
+      demoHousehold,
+      demoClientConstitution,
+      {
+        emergencyExpense: 500_000,
+        incomeLossPercent: 1,
+        incomeLossMonths: 12,
+        employerStockDecline: 0.4,
+        broadMarketDecline: 0.25,
+        spendingIncreaseRate: 0.1
+      },
+      71_000,
+      [
+        { id: "portfolio", label: "Portfolio", capitalRequired: 71_000 },
+        { id: "debt", label: "Debt", capitalRequired: 42_000 }
+      ],
+      now
+    );
+    const result = evaluateRecommendation({
+      recommendation: valid,
+      scenarios,
+      conflicts: [],
+      resilience,
+      now
+    });
+
+    expect(result.status).toBe("REQUIRE_CHANGES");
+    expect(result.reasons.some((reason) => reason.code.startsWith("RESILIENCE_"))).toBe(true);
+  });
+
+  it("permits review when a stress weakens a component but preserves every signed floor", () => {
+    const resilience = compareHouseholdResilience(
+      demoHousehold,
+      demoClientConstitution,
+      {
+        emergencyExpense: 0,
+        incomeLossPercent: 1,
+        incomeLossMonths: 6,
+        employerStockDecline: 0,
+        broadMarketDecline: 0,
+        spendingIncreaseRate: 0
+      },
+      71_000,
+      [
+        { id: "portfolio", label: "Portfolio", capitalRequired: 71_000 },
+        { id: "debt", label: "Debt", capitalRequired: 42_000 }
+      ],
+      now
+    );
+    const result = evaluateRecommendation({
+      recommendation: valid,
+      scenarios,
+      conflicts: [],
+      resilience,
+      now
+    });
+
+    expect(resilience.stressed.score).toBeLessThan(resilience.baseline.score);
+    expect(resilience.stressed.breaches).toHaveLength(0);
+    expect(result.status).toBe("APPROVE");
   });
 
   it("requires calculation traceability and known scenarios", () => {

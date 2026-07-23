@@ -3,14 +3,15 @@ import type {
   RecommendationDraft,
   RecommendationStatement
 } from "@fidt/contracts";
-import type { ConflictFlag, ScenarioResult } from "@fidt/domain";
+import type { ConflictFlag, HouseholdResilienceComparison, ScenarioResult } from "@fidt/domain";
 
-export const POLICY_VERSION = "fiduciary-policy-1.1.0";
+export const POLICY_VERSION = "fiduciary-policy-1.2.0";
 
 export interface PolicyEvaluationInput {
   readonly recommendation: RecommendationDraft;
   readonly scenarios: readonly ScenarioResult[];
   readonly conflicts: readonly ConflictFlag[];
+  readonly resilience?: HouseholdResilienceComparison;
   readonly now?: Date;
   readonly maximumExternalDataAgeDays?: number;
 }
@@ -72,6 +73,17 @@ export function evaluateRecommendation(input: PolicyEvaluationInput): Compliance
         "Disclose every material advisor-compensation conflict in client-ready language."
       );
     }
+  }
+
+  for (const breach of input.resilience?.stressed.breaches ?? []) {
+    reasons.push({
+      code: `RESILIENCE_${breach.code}`,
+      severity: "BLOCKING",
+      message: breach.message
+    });
+    requiredActions.add(
+      "Revise the recommendation or document a new client-approved resilience boundary before approval."
+    );
   }
 
   const recommendedScenario = input.scenarios.find(
