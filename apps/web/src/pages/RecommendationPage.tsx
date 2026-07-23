@@ -2,6 +2,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   CheckCircle2,
+  ClipboardCheck,
   ExternalLink,
   FileCheck2,
   LockKeyhole,
@@ -332,6 +333,15 @@ function RecommendationView({
                 >
                   Open signed Decision Passport
                   <FileCheck2 size={16} />
+                </Link>
+              ) : null}
+              {review.executionPlanId ? (
+                <Link
+                  className="button secondary full"
+                  to={`/households/${recommendation.householdId}/execution?plan=${encodeURIComponent(review.executionPlanId)}`}
+                >
+                  Open execution ledger
+                  <ClipboardCheck size={16} />
                 </Link>
               ) : null}
               <Link

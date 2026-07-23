@@ -2,21 +2,24 @@
 
 ## Data classes
 
-| Class                | Demo behavior                                                           | Production control                                                   |
-| -------------------- | ----------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| Household data       | Synthetic only                                                          | Minimize fields, encrypt, tenant scope, retention policy             |
-| Calculation output   | Versioned and reproducible                                              | Immutable assumptions, engine version, test evidence                 |
-| Public facts         | URL, observation/retrieval dates, stale flag                            | Refresh SLA and source-specific validation                           |
-| Advisor judgment     | Explicit statement label                                                | Named author, timestamp, human review                                |
-| AI suggestion        | Explicit statement label                                                | Prompt/model version, schema validation, no autonomous action        |
-| Audit data           | Append-only hash chain                                                  | Restricted access and external immutable backup                      |
-| Client Constitution  | Versioned synthetic preferences and constraints                         | Dual approval, effective dating, change rationale                    |
-| Decision Passport    | Immutable signed payload plus monitored state                           | Asymmetric/KMS signing, key rotation, independent verification       |
-| Household resilience | Deterministic output from household facts and an explicit stress vector | Versioned method, reviewed policy floors, reproducible shock library |
-| Evidence document    | Synthetic structured text, SHA-256 content hash, allowlisted extraction | Encrypted object storage, malware scan, retention and access policy  |
-| Extracted fact       | Proposed until advisor confirmation; source excerpt and confidence      | Dual control for sensitive fields, reconciliation and exception SLA  |
-| Opportunity score    | Deterministic queue rank with visible reasons and blockers              | Versioned methodology, drift review, fairness and outcome monitoring |
-| Strategy compilation | Versioned bounded alternatives, constraints, economics, frontier        | Template governance, change control, suitability and outcome review  |
+| Class                  | Demo behavior                                                           | Production control                                                    |
+| ---------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Household data         | Synthetic only                                                          | Minimize fields, encrypt, tenant scope, retention policy              |
+| Calculation output     | Versioned and reproducible                                              | Immutable assumptions, engine version, test evidence                  |
+| Public facts           | URL, observation/retrieval dates, stale flag                            | Refresh SLA and source-specific validation                            |
+| Advisor judgment       | Explicit statement label                                                | Named author, timestamp, human review                                 |
+| AI suggestion          | Explicit statement label                                                | Prompt/model version, schema validation, no autonomous action         |
+| Audit data             | Append-only hash chain                                                  | Restricted access and external immutable backup                       |
+| Client Constitution    | Versioned synthetic preferences and constraints                         | Dual approval, effective dating, change rationale                     |
+| Decision Passport      | Immutable signed payload plus monitored state                           | Asymmetric/KMS signing, key rotation, independent verification        |
+| Household resilience   | Deterministic output from household facts and an explicit stress vector | Versioned method, reviewed policy floors, reproducible shock library  |
+| Evidence document      | Synthetic structured text, SHA-256 content hash, allowlisted extraction | Encrypted object storage, malware scan, retention and access policy   |
+| Extracted fact         | Proposed until advisor confirmation; source excerpt and confidence      | Dual control for sensitive fields, reconciliation and exception SLA   |
+| Opportunity score      | Deterministic queue rank with visible reasons and blockers              | Versioned methodology, drift review, fairness and outcome monitoring  |
+| Strategy compilation   | Versioned bounded alternatives, constraints, economics, frontier        | Template governance, change control, suitability and outcome review   |
+| Execution plan         | Immutable task sequence, owners, prerequisites, evidence requirements   | CRM/custodian identity mapping, segregation of duties, escalation SLA |
+| Execution receipt      | Structured synthetic reference, attestation, result, actor, timestamp   | Signed provider event, binary proof retention, reconciliation control |
+| Outcome reconciliation | Expected and observed values, tolerance, passport effect                | Independent pricing, source reconciliation, exception supervision     |
 
 ## Evidence admission
 
@@ -35,6 +38,14 @@ The Radar score is a deterministic work-queue priority, not a financial recommen
 Strategy Compiler v1 accepts only an evidence-ready RSU opportunity. It enumerates five reviewed action templates, runs them through the deterministic financial engine, rejects signed Client Constitution breaches, exposes advisor-revenue differences, and labels the Pareto frontier. No LLM creates a strategy, changes a calculation, or selects a winner.
 
 An advisor-selected focus is presentation state, not a recommendation. Promotion sends every eligible alternative together, and the server compares household id, event id, capital, and strategies with the stored immutable compilation before a scenario run can be created. Compilation and promotion are separate hash-chained audit events. Tax-basis review remains explicitly missing execution evidence and no trade or custodian instruction is produced.
+
+## Execution and outcome boundary
+
+The ledger begins only from a valid, signature-verified Decision Passport. Its plan definition is immutable, task prerequisites are enforced by the server, and every receipt or reconciliation is appended as a new immutable record. An exception can be followed by corrective evidence, but the prior exception remains in storage and in the audit chain.
+
+Receipt references in this demo are synthetic structured identifiers—not proof that a real transaction occurred. Production would require authenticated provider events, binary proof retention, segregation of duties, reconciliation to custodian books, and supervisory exception queues. The ledger never places trades, transfers money, or silently mutates household facts.
+
+Outcome reconciliation compares only deterministic modeled fields that the platform can source from the approved scenario. Transaction-specific tax liability and market impact are explicitly unmeasured. A tolerance exception moves the passport to `REVIEW_REQUIRED`; an observed breach of a signed validity condition causes one-way invalidation.
 
 ## Public connectors
 

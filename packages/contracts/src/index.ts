@@ -408,6 +408,7 @@ export interface ReviewResponse {
   readonly auditEventId: string;
   readonly passportId?: string;
   readonly passportStatus?: DecisionPassportStatus;
+  readonly executionPlanId?: string;
 }
 
 export type DecisionPassportStatus = "VALID" | "REVIEW_REQUIRED" | "INVALIDATED";
@@ -507,7 +508,185 @@ export interface DecisionPassportResponse {
     readonly verifiedAt: string;
   };
   readonly checks: readonly PassportValidityCheck[];
+  readonly executionPlan?: {
+    readonly id: string;
+    readonly status: ExecutionPlanStatus;
+    readonly progress: number;
+  };
 }
+
+export type ExecutionPlanStatus = "ACTIVE" | "AT_RISK" | "COMPLETED" | "REVIEW_REQUIRED";
+export type ExecutionTaskStatus = "BLOCKED" | "READY" | "COMPLETED" | "EXCEPTION";
+export type ExecutionTaskCode =
+  "TAX_REVIEW" | "CLIENT_AUTHORIZATION" | "IMPLEMENTATION_CONFIRMATION" | "OUTCOME_RECONCILIATION";
+export type ExecutionOwnerRole = "ADVISOR" | "CLIENT" | "OPERATIONS" | "TAX_PROFESSIONAL";
+export type ExecutionEvidenceType =
+  "ATTESTATION" | "DOCUMENT_REFERENCE" | "EXTERNAL_CONFIRMATION" | "RECONCILIATION";
+export type ExecutionOutcomeMetric =
+  | "DECISION_CAPITAL_DEPLOYED"
+  | "LIQUID_ASSETS"
+  | "EMPLOYER_STOCK_PERCENT"
+  | "DEBT_REDUCTION"
+  | "ADVISORY_FEE";
+
+export interface ExecutionExpectedOutcome {
+  readonly metric: ExecutionOutcomeMetric;
+  readonly label: string;
+  readonly expectedValue: number;
+  readonly tolerance: number;
+  readonly unit: "CURRENCY" | "RATE";
+  readonly source: string;
+}
+
+export interface ExecutionTaskDefinition {
+  readonly id: string;
+  readonly code: ExecutionTaskCode;
+  readonly title: string;
+  readonly description: string;
+  readonly ownerRole: ExecutionOwnerRole;
+  readonly dueAt: string;
+  readonly prerequisiteTaskIds: readonly string[];
+  readonly requiredEvidence: ExecutionEvidenceType;
+}
+
+export interface ExecutionPlanDefinition {
+  readonly schemaVersion: "1.0";
+  readonly id: string;
+  readonly passportId: string;
+  readonly householdId: string;
+  readonly recommendationId: string;
+  readonly strategy: string;
+  readonly title: string;
+  readonly createdAt: string;
+  readonly createdBy: string;
+  readonly targetCompletionAt: string;
+  readonly tasks: readonly ExecutionTaskDefinition[];
+  readonly expectedOutcomes: readonly ExecutionExpectedOutcome[];
+  readonly unmeasuredOutcomes: readonly string[];
+  readonly boundary: string;
+}
+
+export interface ExecutionReceipt {
+  readonly id: string;
+  readonly planId: string;
+  readonly taskId: string;
+  readonly result: "COMPLETED" | "EXCEPTION";
+  readonly evidenceType: ExecutionEvidenceType;
+  readonly externalReference: string;
+  readonly notes: string;
+  readonly attestation: true;
+  readonly recordedBy: string;
+  readonly recordedAt: string;
+}
+
+export interface ExecutionReconciliationResult {
+  readonly metric: ExecutionOutcomeMetric;
+  readonly label: string;
+  readonly expectedValue: number;
+  readonly actualValue: number;
+  readonly variance: number;
+  readonly tolerance: number;
+  readonly unit: "CURRENCY" | "RATE";
+  readonly status: "MATCHED" | "WITHIN_TOLERANCE" | "EXCEPTION";
+  readonly validityEnvelopeBreached: boolean;
+}
+
+export interface ExecutionReconciliation {
+  readonly id: string;
+  readonly planId: string;
+  readonly passportId: string;
+  readonly status: "MATCHED" | "EXCEPTION";
+  readonly results: readonly ExecutionReconciliationResult[];
+  readonly evidenceReference: string;
+  readonly notes: string;
+  readonly attestation: true;
+  readonly recordedBy: string;
+  readonly recordedAt: string;
+  readonly passportStatusBefore: DecisionPassportStatus;
+  readonly passportStatusAfter: DecisionPassportStatus;
+  readonly reasons: readonly string[];
+}
+
+export interface ExecutionTask extends ExecutionTaskDefinition {
+  readonly status: ExecutionTaskStatus;
+  readonly receipt?: ExecutionReceipt;
+}
+
+export interface ExecutionPlan extends Omit<ExecutionPlanDefinition, "tasks"> {
+  readonly status: ExecutionPlanStatus;
+  readonly progress: number;
+  readonly nextTaskId: string | null;
+  readonly tasks: readonly ExecutionTask[];
+  readonly reconciliation: ExecutionReconciliation | null;
+  readonly passportStatus: DecisionPassportStatus;
+}
+
+export interface ExecutionLedgerResponse {
+  readonly householdId: string;
+  readonly plans: readonly ExecutionPlan[];
+  readonly eligiblePassport?: {
+    readonly id: string;
+    readonly status: DecisionPassportStatus;
+    readonly issuedAt: string;
+    readonly recommendationLabel: string;
+  };
+  readonly summary: {
+    readonly totalPlans: number;
+    readonly activePlans: number;
+    readonly plansAtRisk: number;
+    readonly completedPlans: number;
+    readonly openTasks: number;
+  };
+}
+
+export const executionReceiptRequestSchema = z.object({
+  result: z.enum(["COMPLETED", "EXCEPTION"]),
+  evidenceType: z.enum([
+    "ATTESTATION",
+    "DOCUMENT_REFERENCE",
+    "EXTERNAL_CONFIRMATION",
+    "RECONCILIATION"
+  ]),
+  externalReference: z.string().trim().min(3).max(160),
+  notes: z.string().trim().min(10).max(1_500),
+  attestation: z.literal(true)
+});
+
+export type ExecutionReceiptRequest = z.infer<typeof executionReceiptRequestSchema>;
+
+export const executionReconciliationRequestSchema = z
+  .object({
+    outcomes: z
+      .array(
+        z.object({
+          metric: z.enum([
+            "DECISION_CAPITAL_DEPLOYED",
+            "LIQUID_ASSETS",
+            "EMPLOYER_STOCK_PERCENT",
+            "DEBT_REDUCTION",
+            "ADVISORY_FEE"
+          ]),
+          actualValue: z.number().finite()
+        })
+      )
+      .min(2)
+      .max(8),
+    evidenceReference: z.string().trim().min(3).max(160),
+    notes: z.string().trim().min(10).max(1_500),
+    attestation: z.literal(true)
+  })
+  .superRefine((value, context) => {
+    const metrics = value.outcomes.map((outcome) => outcome.metric);
+    if (new Set(metrics).size !== metrics.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["outcomes"],
+        message: "Each reconciliation metric may be submitted only once"
+      });
+    }
+  });
+
+export type ExecutionReconciliationRequest = z.infer<typeof executionReconciliationRequestSchema>;
 
 export const passportMonitorRequestSchema = z.object({
   observations: z

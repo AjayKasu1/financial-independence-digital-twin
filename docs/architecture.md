@@ -25,6 +25,9 @@ flowchart TB
   Worker --> Policy["Policy engine"]
   Worker --> Public["Treasury · BLS · FHFA · SEC"]
   Worker --> Passport["Passport signer + validity engine"]
+  Passport --> Execution["Execution & Outcome Ledger"]
+  Execution --> D1
+  Execution --> Passport
   Cron["Six-hour scheduled trigger"] --> Passport
   Passport --> D1
   Worker -. future binary documents .-> R2["R2"]
@@ -62,12 +65,15 @@ flowchart TB
 16. The policy engine independently evaluates the draft and treats signed resilience-floor breaches as blocking.
 17. A human must attest before approval is stored.
 18. Approval issues an immutable passport whose canonical payload—including resilience output—is hashed and signed server-side.
-19. A scheduled monitor reevaluates scenario and resilience conditions against refreshed data and current household facts.
-20. Evidence, compilation, scenario, model, passport, monitor, and human actions append to the hash-chained audit table.
+19. A verified valid passport creates an immutable execution-plan definition. Server-side prerequisite gates control which task may accept the next evidence receipt.
+20. Task receipts are append-only and contain an external reference, evidence class, named recorder, timestamp, result, and attestation. FiduciaryOS never sends a trade, transfer, or custodian instruction.
+21. The final task reconciles every expected outcome against a structured observed value and a deterministic tolerance. A signed validity-envelope breach invalidates the passport; other material deviations require renewed review.
+22. A scheduled monitor reevaluates scenario and resilience conditions against refreshed data and current household facts.
+23. Evidence, compilation, scenario, model, passport, execution, outcome, monitor, and human actions append to the hash-chained audit table.
 
 ## Persistence
 
-D1 stores a snapshot JSON for fast reconstruction plus normalized evidence-document, extraction, source-fact, and strategy-compilation records. Structured demo source text is retained only to demonstrate deterministic extraction; production binary documents require encrypted object storage, malware scanning, access control, and retention policy. Monetary columns in normalized financial tables use integer cents. Compiled candidate sets, scenario outputs, Client Constitutions, prompts metadata, compliance decisions, Decision Passport payloads, validity checks, and audit metadata are immutable JSON snapshots. Scenario runs retain the compilation id when promoted from the compiler. Passport status is mutable only through the monitor; invalidation is one-way and every status transition is audited.
+D1 stores a snapshot JSON for fast reconstruction plus normalized evidence-document, extraction, source-fact, strategy-compilation, execution-plan, receipt, and reconciliation records. Structured demo source text is retained only to demonstrate deterministic extraction; production binary documents require encrypted object storage, malware scanning, access control, and retention policy. Monetary columns in normalized financial tables use integer cents. Compiled candidate sets, scenario outputs, Client Constitutions, prompts metadata, compliance decisions, Decision Passport payloads, execution definitions, receipts, reconciliations, validity checks, and audit metadata are immutable JSON snapshots. Scenario runs retain the compilation id when promoted from the compiler. Passport status changes only through monitored or execution-derived controls; invalidation is one-way and every status transition is audited.
 
 The audit table has triggers that reject update and delete. Each event hashes its canonical content and the previous event hash. In a higher-assurance deployment, export daily chain heads to immutable object storage or an external timestamp service.
 
@@ -87,3 +93,7 @@ The audit table has triggers that reject update and delete. Each event hashes it
 - Duplicate evidence review: the server returns 409 and does not replay a twin update.
 - Unconfirmed RSU evidence: compilation is rejected before any strategy is created.
 - Modified compiled bundle: governed comparison returns 422; the stored eligible strategies and shared capital must be promoted exactly.
+- Receipt submitted before prerequisites: request returns 409 and no operational state changes.
+- Wrong receipt evidence class: request returns 422; each task accepts only its declared proof type.
+- Realized outcome outside tolerance: execution enters review and the passport becomes `REVIEW_REQUIRED`.
+- Realized outcome outside a signed validity condition: the passport becomes permanently `INVALIDATED`.

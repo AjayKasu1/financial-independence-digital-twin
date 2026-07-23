@@ -7,6 +7,10 @@ import type {
   EvidenceDocumentReviewRequest,
   EvidenceDocumentReviewResponse,
   EvidenceDocumentsResponse,
+  ExecutionLedgerResponse,
+  ExecutionPlan,
+  ExecutionReceiptRequest,
+  ExecutionReconciliationRequest,
   HouseholdResponse,
   LiveDataResponse,
   OpportunityRadarResponse,
@@ -119,5 +123,26 @@ export const api = {
     request<DecisionPassportResponse>(`/api/passports/${encodeURIComponent(passportId)}/monitor`, {
       method: "POST",
       body: JSON.stringify({})
+    }),
+  createExecutionPlan: (passportId: string) =>
+    request<ExecutionPlan>(`/api/passports/${encodeURIComponent(passportId)}/execution-plan`, {
+      method: "POST",
+      body: JSON.stringify({})
+    }),
+  executionPlans: (householdId: string) =>
+    request<ExecutionLedgerResponse>(
+      `/api/households/${encodeURIComponent(householdId)}/execution-plans`
+    ),
+  executionPlan: (planId: string) =>
+    request<ExecutionPlan>(`/api/execution-plans/${encodeURIComponent(planId)}`),
+  recordExecutionReceipt: (planId: string, taskId: string, input: ExecutionReceiptRequest) =>
+    request<ExecutionPlan>(
+      `/api/execution-plans/${encodeURIComponent(planId)}/tasks/${encodeURIComponent(taskId)}/receipts`,
+      { method: "POST", body: JSON.stringify(input) }
+    ),
+  reconcileExecution: (planId: string, input: ExecutionReconciliationRequest) =>
+    request<ExecutionPlan>(`/api/execution-plans/${encodeURIComponent(planId)}/reconcile`, {
+      method: "POST",
+      body: JSON.stringify(input)
     })
 };

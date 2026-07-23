@@ -5,6 +5,9 @@ import type {
   DecisionPassportProof,
   DecisionPassportStatus,
   EvidenceDocument,
+  ExecutionPlanDefinition,
+  ExecutionReceipt,
+  ExecutionReconciliation,
   ExtractedEvidenceFact,
   PassportValidityCheck,
   RecommendationDraft,
@@ -85,6 +88,26 @@ export interface StoredDecisionPassport {
     readonly invalidationReasons: readonly string[];
   };
   readonly checks: readonly PassportValidityCheck[];
+}
+
+interface ExecutionPlanRow {
+  readonly plan_json: string;
+  readonly passport_status: DecisionPassportStatus;
+}
+
+interface ExecutionReceiptRow {
+  readonly receipt_json: string;
+}
+
+interface ExecutionReconciliationRow {
+  readonly reconciliation_json: string;
+}
+
+export interface StoredExecutionPlan {
+  readonly definition: ExecutionPlanDefinition;
+  readonly receipts: readonly ExecutionReceipt[];
+  readonly reconciliations: readonly ExecutionReconciliation[];
+  readonly passportStatus: DecisionPassportStatus;
 }
 
 interface RecommendationRow {
@@ -642,6 +665,100 @@ export class DatabaseRepository {
     };
   }
 
+  async getLatestDecisionPassport(householdId: string): Promise<StoredDecisionPassport | null> {
+    const row = await this.#db
+      .prepare(
+        "SELECT id FROM decision_passports WHERE household_id = ? ORDER BY issued_at DESC LIMIT 1"
+      )
+      .bind(householdId)
+      .first<{ id: string }>();
+    return row ? this.getDecisionPassport(row.id) : null;
+  }
+
+  async saveExecutionPlan(plan: ExecutionPlanDefinition): Promise<void> {
+    await this.#db
+      .prepare(
+        "INSERT INTO execution_plans (id, passport_id, household_id, created_at, plan_json) VALUES (?, ?, ?, ?, ?)"
+      )
+      .bind(plan.id, plan.passportId, plan.householdId, plan.createdAt, JSON.stringify(plan))
+      .run();
+  }
+
+  async getExecutionPlan(id: string): Promise<StoredExecutionPlan | null> {
+    const row = await this.#db
+      .prepare(
+        "SELECT ep.plan_json, dp.status AS passport_status FROM execution_plans ep JOIN decision_passports dp ON dp.id = ep.passport_id WHERE ep.id = ?"
+      )
+      .bind(id)
+      .first<ExecutionPlanRow>();
+    return row ? this.hydrateExecutionPlan(row) : null;
+  }
+
+  async getExecutionPlanByPassport(passportId: string): Promise<StoredExecutionPlan | null> {
+    const row = await this.#db
+      .prepare(
+        "SELECT ep.plan_json, dp.status AS passport_status FROM execution_plans ep JOIN decision_passports dp ON dp.id = ep.passport_id WHERE ep.passport_id = ?"
+      )
+      .bind(passportId)
+      .first<ExecutionPlanRow>();
+    return row ? this.hydrateExecutionPlan(row) : null;
+  }
+
+  async listExecutionPlans(householdId: string): Promise<readonly StoredExecutionPlan[]> {
+    const rows = await this.#db
+      .prepare(
+        "SELECT ep.plan_json, dp.status AS passport_status FROM execution_plans ep JOIN decision_passports dp ON dp.id = ep.passport_id WHERE ep.household_id = ? ORDER BY ep.created_at DESC"
+      )
+      .bind(householdId)
+      .all<ExecutionPlanRow>();
+    return Promise.all(rows.results.map((row) => this.hydrateExecutionPlan(row)));
+  }
+
+  async saveExecutionReceipt(receipt: ExecutionReceipt): Promise<void> {
+    await this.#db
+      .prepare(
+        "INSERT INTO execution_receipts (id, plan_id, task_id, recorded_at, receipt_json) VALUES (?, ?, ?, ?, ?)"
+      )
+      .bind(receipt.id, receipt.planId, receipt.taskId, receipt.recordedAt, JSON.stringify(receipt))
+      .run();
+  }
+
+  async saveExecutionReconciliation(reconciliation: ExecutionReconciliation): Promise<void> {
+    await this.#db
+      .prepare(
+        "INSERT INTO execution_reconciliations (id, plan_id, passport_id, recorded_at, reconciliation_json) VALUES (?, ?, ?, ?, ?)"
+      )
+      .bind(
+        reconciliation.id,
+        reconciliation.planId,
+        reconciliation.passportId,
+        reconciliation.recordedAt,
+        JSON.stringify(reconciliation)
+      )
+      .run();
+  }
+
+  async transitionPassportStatus(input: {
+    readonly passportId: string;
+    readonly status: "REVIEW_REQUIRED" | "INVALIDATED";
+    readonly occurredAt: string;
+    readonly reasons: readonly string[];
+  }): Promise<void> {
+    await this.#db
+      .prepare(
+        "UPDATE decision_passports SET status = CASE WHEN status = 'INVALIDATED' THEN status ELSE ? END, last_checked_at = ?, invalidated_at = CASE WHEN ? = 'INVALIDATED' THEN COALESCE(invalidated_at, ?) ELSE invalidated_at END, invalidation_reasons_json = CASE WHEN status = 'INVALIDATED' THEN invalidation_reasons_json ELSE ? END WHERE id = ?"
+      )
+      .bind(
+        input.status,
+        input.occurredAt,
+        input.status,
+        input.occurredAt,
+        JSON.stringify(input.reasons),
+        input.passportId
+      )
+      .run();
+  }
+
   async listMonitorablePassportIds(): Promise<readonly string[]> {
     const result = await this.#db
       .prepare(
@@ -668,7 +785,7 @@ export class DatabaseRepository {
         ),
       this.#db
         .prepare(
-          "UPDATE decision_passports SET status = ?, last_checked_at = ?, invalidated_at = CASE WHEN ? = 'INVALIDATED' THEN COALESCE(invalidated_at, ?) ELSE invalidated_at END, invalidation_reasons_json = CASE WHEN ? = 'INVALIDATED' THEN ? ELSE invalidation_reasons_json END WHERE id = ?"
+          "UPDATE decision_passports SET status = ?, last_checked_at = ?, invalidated_at = CASE WHEN ? = 'INVALIDATED' THEN COALESCE(invalidated_at, ?) ELSE invalidated_at END, invalidation_reasons_json = CASE WHEN ? IN ('INVALIDATED', 'REVIEW_REQUIRED') THEN ? WHEN ? = 'VALID' THEN '[]' ELSE invalidation_reasons_json END WHERE id = ?"
         )
         .bind(
           check.statusAfter,
@@ -677,6 +794,7 @@ export class DatabaseRepository {
           check.checkedAt,
           check.statusAfter,
           JSON.stringify(check.reasons),
+          check.statusAfter,
           passportId
         )
     ]);
@@ -749,6 +867,34 @@ export class DatabaseRepository {
       previousHash: row.previous_hash,
       eventHash: row.event_hash
     }));
+  }
+
+  private async hydrateExecutionPlan(row: ExecutionPlanRow): Promise<StoredExecutionPlan> {
+    const definition = parseJson<ExecutionPlanDefinition>(row.plan_json);
+    const [receiptRows, reconciliationRows] = await Promise.all([
+      this.#db
+        .prepare(
+          "SELECT receipt_json FROM execution_receipts WHERE plan_id = ? ORDER BY recorded_at ASC, rowid ASC"
+        )
+        .bind(definition.id)
+        .all<ExecutionReceiptRow>(),
+      this.#db
+        .prepare(
+          "SELECT reconciliation_json FROM execution_reconciliations WHERE plan_id = ? ORDER BY recorded_at ASC, rowid ASC"
+        )
+        .bind(definition.id)
+        .all<ExecutionReconciliationRow>()
+    ]);
+    return {
+      definition,
+      receipts: receiptRows.results.map((receipt) =>
+        parseJson<ExecutionReceipt>(receipt.receipt_json)
+      ),
+      reconciliations: reconciliationRows.results.map((reconciliation) =>
+        parseJson<ExecutionReconciliation>(reconciliation.reconciliation_json)
+      ),
+      passportStatus: row.passport_status
+    };
   }
 
   private async hydrateEvidenceDocument(row: EvidenceDocumentRow): Promise<EvidenceDocument> {

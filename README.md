@@ -27,6 +27,8 @@ This is a production-shaped demonstration, not financial advice. The included Pa
 - Failed drafts can be regenerated with stored compliance feedback or replaced by the governed deterministic fallback.
 - Every approval remains a human action; the database stores it in an append-only SHA-256 hash chain that the API recomputes on every audit read.
 - Every approved recommendation receives an immutable HMAC-signed Decision Passport with its evidence, calculations, conflicts, constitution, and validity envelope.
+- Approval also creates a non-custodial Execution Plan with named owners, due dates, prerequisite gates, and explicit evidence requirements.
+- Execution receipts and outcome reconciliations are immutable records. Realized values are compared with approved expectations and signed validity conditions; material exceptions automatically reopen review or invalidate the passport.
 - A six-hour monitor rechecks public-data retrieval, household constraints, and counterfactual boundaries. Material breaches invalidate advice permanently until a new reviewed passport is issued.
 - The app remains functional without an LLM key by using a deterministic recommendation template.
 
@@ -62,7 +64,10 @@ flowchart LR
   F --> H
   I --> H
   I --> P["Signed Decision Passport"]
-  P --> V["Live validity monitor"]
+  P --> EX["Execution & Outcome Ledger<br/>tasks · receipts · reconciliation"]
+  EX --> OUT["Realized outcome controls"]
+  OUT --> V["Live validity monitor"]
+  P --> V
   V -->|"Boundary breached"| X["Invalidate and reopen review"]
 ```
 
@@ -166,9 +171,9 @@ Keep the API contracts and deterministic packages unchanged. See [`docs/architec
 
 ## Current boundaries
 
-Included: synthetic household planning, allowlisted structured-document extraction, advisor-confirmed Evidence-to-Twin updates, field-level provenance, a deterministic Advisor Opportunity Radar, an RSU Strategy Compiler with constitution rejection, Pareto-frontier analysis and advisor-economics visibility, a session-only Advisor Workbench, deterministic household stress testing and optionality scoring, server-locked governed scenario promotion, shared-capital enforcement, executable client constraints, deterministic counterfactual boundaries, FI projection, rental underwriting, seeded portfolio simulations, debt comparison, fee conflicts, live public observations, governed recommendations, human review, signed Decision Passports, scheduled validity monitoring, automatic invalidation, and audit lineage.
+Included: synthetic household planning, allowlisted structured-document extraction, advisor-confirmed Evidence-to-Twin updates, field-level provenance, a deterministic Advisor Opportunity Radar, an RSU Strategy Compiler with constitution rejection, Pareto-frontier analysis and advisor-economics visibility, a session-only Advisor Workbench, deterministic household stress testing and optionality scoring, server-locked governed scenario promotion, shared-capital enforcement, executable client constraints, deterministic counterfactual boundaries, FI projection, rental underwriting, seeded portfolio simulations, debt comparison, fee conflicts, live public observations, governed recommendations, human review, signed Decision Passports, non-custodial execution tasks, immutable execution receipts, expected-versus-realized outcome reconciliation, execution-triggered passport review, scheduled validity monitoring, automatic invalidation, and audit lineage.
 
-Not included: personal-document upload, binary storage, document OCR, malware scanning, brokerage connectivity, trading, individualized tax/legal advice, multi-tenant billing, custodian write access, or production RIA books and records certification.
+Not included: personal-document upload, binary storage, document OCR, malware scanning, brokerage connectivity, trading, money movement, individualized tax/legal advice, multi-tenant billing, custodian write access, or production RIA books and records certification.
 
 ## Documentation
 

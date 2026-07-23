@@ -6,6 +6,7 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { DataConnectorsPage } from "./pages/DataConnectorsPage";
 import { EvidenceLibraryPage } from "./pages/EvidenceLibraryPage";
 import { EvidenceIntakePage } from "./pages/EvidenceIntakePage";
+import { ExecutionLedgerPage } from "./pages/ExecutionLedgerPage";
 import { HouseholdPage } from "./pages/HouseholdPage";
 import { OpportunityRadarPage } from "./pages/OpportunityRadarPage";
 import { PassportPage } from "./pages/PassportPage";
@@ -26,6 +27,7 @@ export const router = createBrowserRouter([
       { path: "households/:householdId", element: <HouseholdPage /> },
       { path: "households/:householdId/evidence-intake", element: <EvidenceIntakePage /> },
       { path: "households/:householdId/strategy-compiler", element: <StrategyCompilerPage /> },
+      { path: "households/:householdId/execution", element: <ExecutionLedgerPage /> },
       { path: "households/:householdId/compare", element: <ComparePage /> },
       { path: "households/:householdId/recommendation", element: <RecommendationPage /> },
       { path: "households/:householdId/passports/:passportId", element: <PassportPage /> },

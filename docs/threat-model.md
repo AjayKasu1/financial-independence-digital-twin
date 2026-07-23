@@ -8,26 +8,30 @@
 - Deterministic calculation integrity
 - Recommendation evidence and policy status
 - Human review and audit-chain integrity
+- Execution receipts, outcome observations, and passport transitions
 
 ## Principal threats and controls
 
-| Threat                     | Current control                                                           | Production follow-up                                           |
-| -------------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| Key exposure               | Server-only secrets; no `VITE_*` key                                      | Secret rotation and DLP scanning                               |
-| Unauthorized access        | Cloudflare Access JWT verification in production                          | Group/role authorization and session revocation tests          |
-| Cross-tenant access        | Single synthetic tenant only                                              | Mandatory tenant key on every table/query plus isolation tests |
-| Prompt injection           | Fixed prompt, structured context, allowed citations, schema validation    | Document sanitization and retrieved-content trust policy       |
-| AI invents math            | Model instructed not to calculate; numeric source is deterministic output | Compare every drafted number against calculation registry      |
-| Misleading language        | Guarantee and evidence policy rules                                       | Compliance-managed policy versions and regression suite        |
-| Stale external fact        | Observation dates, retrieval dates, stale gate                            | Per-series release calendar and refresh alerts                 |
-| Advisor compensation bias  | Deterministic fee delta and required disclosure                           | Firm-specific schedules and supervisory workflow               |
-| Audit tampering            | Append-only SQL triggers and previous-hash chain                          | WORM export, external chain-head anchoring, privileged alerts  |
-| Passport payload tampering | Canonical payload hash plus server-side HMAC verification                 | Asymmetric KMS/HSM signature and published verification keys   |
-| Stale advice reuse         | Executable validity envelope, scheduled checks, one-way invalidation      | Custodian/CRM event streams and supervisory escalation SLA     |
-| Fake monitoring input      | Live connectors and current household snapshot; overrides limited to demo | Signed connector events and source-specific validation         |
-| Abuse/denial of service    | KV write rate limit and Cloudflare edge                                   | Durable rate limiter, bot controls, budgets and alerts         |
-| XSS/clickjacking           | React escaping, CSP, frame denial, nosniff                                | Nonce-based CSP if third-party scripts are added               |
-| Supply-chain compromise    | Lockfile, CI verification                                                 | Dependabot/Renovate, provenance, SCA policy                    |
+| Threat                      | Current control                                                                     | Production follow-up                                           |
+| --------------------------- | ----------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Key exposure                | Server-only secrets; no `VITE_*` key                                                | Secret rotation and DLP scanning                               |
+| Unauthorized access         | Cloudflare Access JWT verification in production                                    | Group/role authorization and session revocation tests          |
+| Cross-tenant access         | Single synthetic tenant only                                                        | Mandatory tenant key on every table/query plus isolation tests |
+| Prompt injection            | Fixed prompt, structured context, allowed citations, schema validation              | Document sanitization and retrieved-content trust policy       |
+| AI invents math             | Model instructed not to calculate; numeric source is deterministic output           | Compare every drafted number against calculation registry      |
+| Misleading language         | Guarantee and evidence policy rules                                                 | Compliance-managed policy versions and regression suite        |
+| Stale external fact         | Observation dates, retrieval dates, stale gate                                      | Per-series release calendar and refresh alerts                 |
+| Advisor compensation bias   | Deterministic fee delta and required disclosure                                     | Firm-specific schedules and supervisory workflow               |
+| Audit tampering             | Append-only SQL triggers and previous-hash chain                                    | WORM export, external chain-head anchoring, privileged alerts  |
+| Passport payload tampering  | Canonical payload hash plus server-side HMAC verification                           | Asymmetric KMS/HSM signature and published verification keys   |
+| Stale advice reuse          | Executable validity envelope, scheduled checks, one-way invalidation                | Custodian/CRM event streams and supervisory escalation SLA     |
+| Fake monitoring input       | Live connectors and current household snapshot; overrides limited to demo           | Signed connector events and source-specific validation         |
+| Fabricated execution proof  | Typed synthetic references, attestation, actor/time attribution, immutable receipts | Signed custodian events, dual control, document retention      |
+| Out-of-order implementation | Server-enforced task prerequisites and evidence classes                             | Segregation of duties and supervisory exception queues         |
+| Outcome value tampering     | Immutable reconciliations, deterministic tolerances, passport transition            | Independent pricing/reconciliation feeds and sampling review   |
+| Abuse/denial of service     | KV write rate limit and Cloudflare edge                                             | Durable rate limiter, bot controls, budgets and alerts         |
+| XSS/clickjacking            | React escaping, CSP, frame denial, nosniff                                          | Nonce-based CSP if third-party scripts are added               |
+| Supply-chain compromise     | Lockfile, CI verification                                                           | Dependabot/Renovate, provenance, SCA policy                    |
 
 ## Trust boundaries
 

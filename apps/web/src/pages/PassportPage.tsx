@@ -1,7 +1,9 @@
 import {
   AlertTriangle,
+  ArrowRight,
   ArrowLeft,
   CheckCircle2,
+  ClipboardCheck,
   Clock3,
   FileKey2,
   Fingerprint,
@@ -10,7 +12,7 @@ import {
   XCircle
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import type {
   DecisionPassportResponse,
   DecisionPassportStatus,
@@ -23,9 +25,11 @@ import { currency, dateTime, fullCurrency, percent } from "../lib/format";
 
 export function PassportPage() {
   const { householdId = "", passportId = "" } = useParams();
+  const navigate = useNavigate();
   const [data, setData] = useState<DecisionPassportResponse | null>(null);
   const [error, setError] = useState("");
   const [monitoring, setMonitoring] = useState(false);
+  const [creatingExecution, setCreatingExecution] = useState(false);
   const load = useCallback(() => {
     setError("");
     void api
@@ -53,6 +57,19 @@ export function PassportPage() {
         setError(reason instanceof Error ? reason.message : "Unknown error")
       )
       .finally(() => setMonitoring(false));
+  };
+  const createExecution = () => {
+    setCreatingExecution(true);
+    setError("");
+    void api
+      .createExecutionPlan(passportId)
+      .then((plan) =>
+        navigate(`/households/${householdId}/execution?plan=${encodeURIComponent(plan.id)}`)
+      )
+      .catch((reason: unknown) =>
+        setError(reason instanceof Error ? reason.message : "Unknown error")
+      )
+      .finally(() => setCreatingExecution(false));
   };
   if (error && !data) return <ErrorState message={error} retry={load} />;
   if (!data) return <LoadingState label="Verifying signed Decision Passport…" />;
@@ -113,6 +130,41 @@ export function PassportPage() {
             </div>
           ) : null}
         </div>
+      </section>
+
+      <section className="panel passport-execution-handoff">
+        <span className="passport-execution-icon">
+          <ClipboardCheck />
+        </span>
+        <div>
+          <span className="eyebrow">Execution & Outcome Ledger</span>
+          <h2>
+            {data.executionPlan
+              ? `${Math.round(data.executionPlan.progress * 100)}% of controlled execution recorded`
+              : "Turn approved advice into controlled implementation"}
+          </h2>
+          <p>
+            Track owners, prerequisites, immutable receipts, realized outcomes, and automatic
+            passport re-review without placing trades or moving money.
+          </p>
+        </div>
+        {data.executionPlan ? (
+          <Link
+            className="button primary"
+            to={`/households/${householdId}/execution?plan=${encodeURIComponent(data.executionPlan.id)}`}
+          >
+            Open execution ledger <ArrowRight size={15} />
+          </Link>
+        ) : (
+          <button
+            className="button primary"
+            onClick={createExecution}
+            disabled={creatingExecution || state.status !== "VALID" || !verification.verified}
+          >
+            {creatingExecution ? "Creating controls…" : "Create execution plan"}
+            <ArrowRight size={15} />
+          </button>
+        )}
       </section>
 
       <section className="passport-layout">

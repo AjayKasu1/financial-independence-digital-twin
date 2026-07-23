@@ -3,15 +3,21 @@ import {
   type Citation,
   type DashboardHousehold,
   type DashboardResponse,
+  type DecisionPassportPayload,
   type DecisionPassportResponse,
   type EvidenceDocumentReviewResponse,
   type EvidenceDocumentsResponse,
+  type ExecutionLedgerResponse,
+  type ExecutionPlan,
+  type ExecutionReceipt,
   type OpportunityRadarResponse,
   type ScenarioComparisonResponse,
   type StrategyCompilation,
   type ValidityMetric,
   evidenceDocumentIngestRequestSchema,
   evidenceDocumentReviewRequestSchema,
+  executionReceiptRequestSchema,
+  executionReconciliationRequestSchema,
   passportMonitorRequestSchema,
   recommendationRequestSchema,
   reviewRequestSchema,
@@ -47,6 +53,12 @@ import { evaluateRecommendation } from "@fidt/policy-engine";
 import { Hono } from "hono";
 import { ZodError } from "zod";
 import {
+  createExecutionPlanDefinition,
+  EXECUTION_ENGINE_VERSION,
+  materializeExecutionPlan,
+  reconcileExecution
+} from "./execution";
+import {
   applyConfirmedEvidence,
   EvidenceExtractionError,
   extractEvidenceDocument
@@ -61,7 +73,7 @@ import {
 } from "./passports";
 import { approvalBlockReason, verifyAuditChain } from "./governance";
 import { authenticate, rateLimit, requestContext, securityHeaders } from "./middleware";
-import { DatabaseRepository } from "./repositories/database";
+import { DatabaseRepository, type StoredExecutionPlan } from "./repositories/database";
 import type { Bindings, Variables } from "./types";
 import { runAdvisorWorkbench } from "./workbench";
 import { compileRsuStrategies } from "./strategy-compiler";
@@ -732,6 +744,7 @@ app.post("/api/recommendations/:recommendationId/review", async (context) => {
   });
   let passportId: string | undefined;
   let passportStatus: "VALID" | undefined;
+  let executionPlanId: string | undefined;
   if (input.decision === "APPROVE") {
     const [run, household] = await Promise.all([
       repository.getScenarioRun(stored.runId),
@@ -766,6 +779,13 @@ app.post("/api/recommendations/:recommendationId/review", async (context) => {
         validityConditions: issued.passport.validityEnvelope.length
       }
     });
+    const executionPlan = await ensureExecutionPlan({
+      repository,
+      passport: issued.passport,
+      run,
+      advisorId: context.get("advisor").id
+    });
+    executionPlanId = executionPlan.id;
   }
   return context.json(
     {
@@ -774,7 +794,8 @@ app.post("/api/recommendations/:recommendationId/review", async (context) => {
       ...input,
       reviewedAt,
       auditEventId: auditEvent.id,
-      ...(passportId ? { passportId, passportStatus } : {})
+      ...(passportId ? { passportId, passportStatus } : {}),
+      ...(executionPlanId ? { executionPlanId } : {})
     },
     201
   );
@@ -782,8 +803,18 @@ app.post("/api/recommendations/:recommendationId/review", async (context) => {
 
 app.get("/api/passports/:passportId", async (context) => {
   const repository = await repositoryFor(context.env);
-  const stored = await repository.getDecisionPassport(context.req.param("passportId"));
+  const passportId = context.req.param("passportId");
+  const stored = await repository.getDecisionPassport(passportId);
   if (!stored) throw new HttpError(404, "Decision Passport not found");
+  const storedExecution = await repository.getExecutionPlanByPassport(passportId);
+  const executionPlan = storedExecution
+    ? materializeExecutionPlan({
+        definition: storedExecution.definition,
+        receipts: storedExecution.receipts,
+        reconciliations: storedExecution.reconciliations,
+        passportStatus: storedExecution.passportStatus
+      })
+    : null;
   const response: DecisionPassportResponse = {
     ...stored,
     verification: {
@@ -793,7 +824,16 @@ app.get("/api/passports/:passportId", async (context) => {
         passportSigningSecret(context.env)
       ),
       verifiedAt: new Date().toISOString()
-    }
+    },
+    ...(executionPlan
+      ? {
+          executionPlan: {
+            id: executionPlan.id,
+            status: executionPlan.status,
+            progress: executionPlan.progress
+          }
+        }
+      : {})
   };
   return context.json(response);
 });
@@ -808,6 +848,212 @@ app.post("/api/passports/:passportId/monitor", async (context) => {
   const response = await monitorPassport(repository, context.env, passportId, input.observations);
   if (!response) throw new HttpError(404, "Decision Passport not found");
   return context.json(response);
+});
+
+app.post("/api/passports/:passportId/execution-plan", async (context) => {
+  const repository = await repositoryFor(context.env);
+  const passportId = context.req.param("passportId");
+  const stored = await repository.getDecisionPassport(passportId);
+  if (!stored) throw new HttpError(404, "Decision Passport not found");
+  if (stored.state.status !== "VALID") {
+    throw new HttpError(409, "Only a valid Decision Passport can enter execution");
+  }
+  const verified = await verifyDecisionPassport(
+    stored.passport,
+    stored.proof,
+    passportSigningSecret(context.env)
+  );
+  if (!verified) throw new HttpError(409, "Decision Passport signature verification failed");
+  const run = await repository.getScenarioRun(stored.passport.runId);
+  if (!run) throw new HttpError(409, "The approved scenario run is unavailable");
+  const plan = await ensureExecutionPlan({
+    repository,
+    passport: stored.passport,
+    run,
+    advisorId: context.get("advisor").id
+  });
+  return context.json(plan, 201);
+});
+
+app.get("/api/households/:householdId/execution-plans", async (context) => {
+  const repository = await repositoryFor(context.env);
+  const household = await requireHousehold(repository, context.req.param("householdId"));
+  const [storedPlans, latestPassport] = await Promise.all([
+    repository.listExecutionPlans(household.id),
+    repository.getLatestDecisionPassport(household.id)
+  ]);
+  const plans = storedPlans.map(materializeStoredExecutionPlan);
+  const eligiblePassport =
+    latestPassport?.state.status === "VALID" &&
+    !plans.some((plan) => plan.passportId === latestPassport.passport.id)
+      ? latestPassport
+      : null;
+  const response: ExecutionLedgerResponse = {
+    householdId: household.id,
+    plans,
+    ...(eligiblePassport
+      ? {
+          eligiblePassport: {
+            id: eligiblePassport.passport.id,
+            status: eligiblePassport.state.status,
+            issuedAt: eligiblePassport.passport.issuedAt,
+            recommendationLabel: eligiblePassport.passport.recommendedScenario.label
+          }
+        }
+      : {}),
+    summary: {
+      totalPlans: plans.length,
+      activePlans: plans.filter((plan) => plan.status === "ACTIVE").length,
+      plansAtRisk: plans.filter(
+        (plan) => plan.status === "AT_RISK" || plan.status === "REVIEW_REQUIRED"
+      ).length,
+      completedPlans: plans.filter((plan) => plan.status === "COMPLETED").length,
+      openTasks: plans
+        .flatMap((plan) => plan.tasks)
+        .filter((task) => task.status === "READY" || task.status === "BLOCKED").length
+    }
+  };
+  return context.json(response);
+});
+
+app.get("/api/execution-plans/:planId", async (context) => {
+  const repository = await repositoryFor(context.env);
+  const stored = await repository.getExecutionPlan(context.req.param("planId"));
+  if (!stored) throw new HttpError(404, "Execution plan not found");
+  return context.json(materializeStoredExecutionPlan(stored));
+});
+
+app.post("/api/execution-plans/:planId/tasks/:taskId/receipts", async (context) => {
+  const repository = await repositoryFor(context.env);
+  const stored = await repository.getExecutionPlan(context.req.param("planId"));
+  if (!stored) throw new HttpError(404, "Execution plan not found");
+  const plan = materializeStoredExecutionPlan(stored);
+  const task = plan.tasks.find((candidate) => candidate.id === context.req.param("taskId"));
+  if (!task) throw new HttpError(404, "Execution task not found");
+  if (task.code === "OUTCOME_RECONCILIATION") {
+    throw new HttpError(422, "Use outcome reconciliation for the final execution task");
+  }
+  if (task.status !== "READY" && task.status !== "EXCEPTION") {
+    throw new HttpError(409, "Execution task prerequisites are not complete");
+  }
+  const input = executionReceiptRequestSchema.parse(await context.req.json());
+  if (input.evidenceType !== task.requiredEvidence) {
+    throw new HttpError(422, `This task requires ${task.requiredEvidence} evidence`);
+  }
+  const receipt: ExecutionReceipt = {
+    id: crypto.randomUUID(),
+    planId: plan.id,
+    taskId: task.id,
+    ...input,
+    recordedBy: context.get("advisor").id,
+    recordedAt: new Date().toISOString()
+  };
+  await repository.saveExecutionReceipt(receipt);
+  await repository.appendAudit({
+    householdId: plan.householdId,
+    actorType: "USER",
+    actorId: context.get("advisor").id,
+    action: "EXECUTION_RECEIPT_RECORDED",
+    entityType: "execution_task",
+    entityId: task.id,
+    metadata: {
+      planId: plan.id,
+      passportId: plan.passportId,
+      taskCode: task.code,
+      result: receipt.result,
+      evidenceType: receipt.evidenceType,
+      externalReference: receipt.externalReference
+    }
+  });
+  if (receipt.result === "EXCEPTION" && stored.passportStatus === "VALID") {
+    const reasons = [`${task.title} recorded an implementation exception.`];
+    await repository.transitionPassportStatus({
+      passportId: plan.passportId,
+      status: "REVIEW_REQUIRED",
+      occurredAt: receipt.recordedAt,
+      reasons
+    });
+    await appendExecutionPassportTransition({
+      repository,
+      plan,
+      statusBefore: stored.passportStatus,
+      statusAfter: "REVIEW_REQUIRED",
+      reasons,
+      entityId: receipt.id
+    });
+  }
+  const refreshed = await repository.getExecutionPlan(plan.id);
+  if (!refreshed) throw new Error("Execution plan could not be reloaded");
+  return context.json(materializeStoredExecutionPlan(refreshed), 201);
+});
+
+app.post("/api/execution-plans/:planId/reconcile", async (context) => {
+  const repository = await repositoryFor(context.env);
+  const stored = await repository.getExecutionPlan(context.req.param("planId"));
+  if (!stored) throw new HttpError(404, "Execution plan not found");
+  const plan = materializeStoredExecutionPlan(stored);
+  const reconciliationTask = plan.tasks.find((task) => task.code === "OUTCOME_RECONCILIATION");
+  if (
+    !reconciliationTask ||
+    (reconciliationTask.status !== "READY" && reconciliationTask.status !== "EXCEPTION")
+  ) {
+    throw new HttpError(409, "Implementation receipts must be complete before reconciliation");
+  }
+  const request = executionReconciliationRequestSchema.parse(await context.req.json());
+  const passport = await repository.getDecisionPassport(plan.passportId);
+  if (!passport) throw new HttpError(409, "Decision Passport is unavailable");
+  let reconciliation;
+  try {
+    reconciliation = reconcileExecution({
+      plan: stored.definition,
+      passport: passport.passport,
+      passportStatus: passport.state.status,
+      request,
+      advisorId: context.get("advisor").id
+    });
+  } catch (error) {
+    if (error instanceof RangeError) throw new HttpError(422, error.message);
+    throw error;
+  }
+  await repository.saveExecutionReconciliation(reconciliation);
+  await repository.appendAudit({
+    householdId: plan.householdId,
+    actorType: "USER",
+    actorId: context.get("advisor").id,
+    action: "EXECUTION_OUTCOMES_RECONCILED",
+    entityType: "execution_plan",
+    entityId: plan.id,
+    metadata: {
+      reconciliationId: reconciliation.id,
+      passportId: plan.passportId,
+      status: reconciliation.status,
+      resultStatuses: reconciliation.results.map((result) => ({
+        metric: result.metric,
+        status: result.status,
+        validityEnvelopeBreached: result.validityEnvelopeBreached
+      })),
+      evidenceReference: reconciliation.evidenceReference
+    }
+  });
+  if (reconciliation.passportStatusAfter !== reconciliation.passportStatusBefore) {
+    await repository.transitionPassportStatus({
+      passportId: plan.passportId,
+      status: reconciliation.passportStatusAfter as "REVIEW_REQUIRED" | "INVALIDATED",
+      occurredAt: reconciliation.recordedAt,
+      reasons: reconciliation.reasons
+    });
+    await appendExecutionPassportTransition({
+      repository,
+      plan,
+      statusBefore: reconciliation.passportStatusBefore,
+      statusAfter: reconciliation.passportStatusAfter,
+      reasons: reconciliation.reasons,
+      entityId: reconciliation.id
+    });
+  }
+  const refreshed = await repository.getExecutionPlan(plan.id);
+  if (!refreshed) throw new Error("Execution plan could not be reloaded");
+  return context.json(materializeStoredExecutionPlan(refreshed), 201);
 });
 
 app.get("/api/households/:householdId/audit", async (context) => {
@@ -883,6 +1129,85 @@ function passportSigningSecret(env: Bindings): string {
   return "fidt-local-demo-passport-signing-key-v1";
 }
 
+function materializeStoredExecutionPlan(stored: StoredExecutionPlan): ExecutionPlan {
+  return materializeExecutionPlan({
+    definition: stored.definition,
+    receipts: stored.receipts,
+    reconciliations: stored.reconciliations,
+    passportStatus: stored.passportStatus
+  });
+}
+
+async function ensureExecutionPlan(input: {
+  readonly repository: DatabaseRepository;
+  readonly passport: DecisionPassportPayload;
+  readonly run: ScenarioComparisonResponse;
+  readonly advisorId: string;
+}): Promise<ExecutionPlan> {
+  const existing = await input.repository.getExecutionPlanByPassport(input.passport.id);
+  if (existing) return materializeStoredExecutionPlan(existing);
+  const scenario = input.run.scenarios.find(
+    (candidate) => candidate.id === input.passport.recommendedScenario.id
+  );
+  if (!scenario) throw new HttpError(409, "The approved scenario is unavailable for execution");
+  const definition = createExecutionPlanDefinition({
+    passport: input.passport,
+    scenario,
+    advisorId: input.advisorId
+  });
+  await input.repository.saveExecutionPlan(definition);
+  await input.repository.appendAudit({
+    householdId: definition.householdId,
+    actorType: "SYSTEM",
+    actorId: EXECUTION_ENGINE_VERSION,
+    action: "EXECUTION_PLAN_CREATED",
+    entityType: "execution_plan",
+    entityId: definition.id,
+    metadata: {
+      passportId: definition.passportId,
+      recommendationId: definition.recommendationId,
+      strategy: definition.strategy,
+      taskIds: definition.tasks.map((task) => task.id),
+      expectedOutcomeMetrics: definition.expectedOutcomes.map((outcome) => outcome.metric),
+      nonCustodial: true
+    }
+  });
+  return materializeExecutionPlan({
+    definition,
+    receipts: [],
+    reconciliations: [],
+    passportStatus: "VALID"
+  });
+}
+
+async function appendExecutionPassportTransition(input: {
+  readonly repository: DatabaseRepository;
+  readonly plan: ExecutionPlan;
+  readonly statusBefore: string;
+  readonly statusAfter: string;
+  readonly reasons: readonly string[];
+  readonly entityId: string;
+}): Promise<void> {
+  await input.repository.appendAudit({
+    householdId: input.plan.householdId,
+    actorType: "SYSTEM",
+    actorId: EXECUTION_ENGINE_VERSION,
+    action:
+      input.statusAfter === "INVALIDATED"
+        ? "DECISION_PASSPORT_INVALIDATED"
+        : "DECISION_PASSPORT_REVIEW_REQUIRED",
+    entityType: "decision_passport",
+    entityId: input.plan.passportId,
+    metadata: {
+      executionPlanId: input.plan.id,
+      executionEntityId: input.entityId,
+      statusBefore: input.statusBefore,
+      statusAfter: input.statusAfter,
+      reasons: input.reasons
+    }
+  });
+}
+
 async function monitorPassport(
   repository: DatabaseRepository,
   env: Bindings,
@@ -921,6 +1246,8 @@ async function monitorPassport(
   }
   const refreshed = await repository.getDecisionPassport(passportId);
   if (!refreshed) return null;
+  const storedExecution = await repository.getExecutionPlanByPassport(passportId);
+  const executionPlan = storedExecution ? materializeStoredExecutionPlan(storedExecution) : null;
   return {
     ...refreshed,
     verification: {
@@ -930,7 +1257,16 @@ async function monitorPassport(
         passportSigningSecret(env)
       ),
       verifiedAt: new Date().toISOString()
-    }
+    },
+    ...(executionPlan
+      ? {
+          executionPlan: {
+            id: executionPlan.id,
+            status: executionPlan.status,
+            progress: executionPlan.progress
+          }
+        }
+      : {})
   };
 }
 

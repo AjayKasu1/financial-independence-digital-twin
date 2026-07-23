@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronRight,
   CircleAlert,
+  ClipboardCheck,
   FileInput,
   Files,
   GitBranch,
@@ -34,6 +35,12 @@ const navigation = [
     to: `/households/${demoHouseholdId}/strategy-compiler`,
     label: "Strategy compiler",
     icon: GitBranch,
+    end: true
+  },
+  {
+    to: `/households/${demoHouseholdId}/execution`,
+    label: "Execution ledger",
+    icon: ClipboardCheck,
     end: true
   },
   { to: `/households/${demoHouseholdId}`, label: "Household twin", icon: Users, end: true },
@@ -117,9 +124,11 @@ export function AppShell() {
       ? "Recommendation studio"
       : location.pathname.includes("/strategy-compiler")
         ? "Strategy Compiler"
-        : location.pathname.includes("/evidence-intake")
-          ? "Evidence-to-Twin"
-          : navigationTitle;
+        : location.pathname.includes("/execution")
+          ? "Execution & Outcomes"
+          : location.pathname.includes("/evidence-intake")
+            ? "Evidence-to-Twin"
+            : navigationTitle;
 
   return (
     <div className="app-shell">
