@@ -1,4 +1,13 @@
-import { ArrowRight, Database, ShieldCheck, Sparkles, TrendingUp } from "lucide-react";
+import {
+  ArrowRight,
+  Database,
+  Landmark,
+  Radar,
+  ShieldCheck,
+  Sparkles,
+  TrendingUp,
+  Users
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { DashboardResponse } from "@fidt/contracts";
@@ -34,7 +43,12 @@ export function DashboardPage() {
     <>
       <section className="hero-row">
         <div>
-          <span className="eyebrow coral">Wednesday · July 22</span>
+          <div className="hero-meta">
+            <span className="eyebrow coral">Wednesday · July 22</span>
+            <span className="operating-status">
+              <i /> Workspace current
+            </span>
+          </div>
           <h1>Good afternoon, Elena.</h1>
           <p>
             Three decision moments need attention. The household twin has already assembled the
@@ -44,6 +58,7 @@ export function DashboardPage() {
         <div className="trust-stamp">
           <ShieldCheck />
           <div>
+            <span className="trust-label">Governance status</span>
             <strong>Evidence controls active</strong>
             <span>Human review required for every recommendation</span>
           </div>
@@ -54,23 +69,31 @@ export function DashboardPage() {
           label="Households in focus"
           value={String(data.summary.households)}
           detail="Synthetic demonstration workspace"
+          icon={<Users size={17} />}
+          signal="Focused"
         />
         <MetricCard
           label="Assets modeled"
           value={currency.format(data.summary.assetsTracked)}
           detail="Across liquid accounts"
           tone="positive"
+          icon={<Landmark size={17} />}
+          signal="Modeled"
         />
         <MetricCard
           label="Open decision events"
           value={String(data.summary.openOpportunities)}
           detail={`${data.events.filter((event) => event.severity === "HIGH").length} high-priority`}
           tone="warning"
+          icon={<Radar size={17} />}
+          signal="Review"
         />
         <MetricCard
           label="Public data feeds"
           value={`${data.liveData.length} live`}
           detail="Treasury · BLS · FHFA"
+          icon={<Database size={17} />}
+          signal="Current"
         />
       </section>
       <section className="dashboard-grid">
@@ -80,7 +103,12 @@ export function DashboardPage() {
               <span className="eyebrow">Decision queue</span>
               <h2>What changed</h2>
             </div>
-            <Badge tone="warn">{data.events.length} signals</Badge>
+            <div className="panel-heading-actions">
+              <span className="quiet-status">
+                <i /> Continuously monitored
+              </span>
+              <Badge tone="warn">{data.events.length} signals</Badge>
+            </div>
           </div>
           <div className="event-list">
             {data.events.map((event) => (

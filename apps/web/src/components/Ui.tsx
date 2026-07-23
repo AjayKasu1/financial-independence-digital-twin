@@ -1,12 +1,21 @@
 import { AlertTriangle, Check, LoaderCircle, RefreshCw } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 export function LoadingState({ label = "Building the evidence view…" }: { label?: string }) {
   return (
     <div className="state-card">
-      <LoaderCircle className="spin" />
-      <strong>{label}</strong>
-      <span>Calculations remain deterministic while data loads.</span>
+      <div className="loading-orbit">
+        <LoaderCircle className="spin" />
+      </div>
+      <div className="loading-copy">
+        <strong>{label}</strong>
+        <span>Calculations remain deterministic while data loads.</span>
+      </div>
+      <div className="loading-skeleton" aria-hidden="true">
+        <i />
+        <i />
+        <i />
+      </div>
     </div>
   );
 }
@@ -31,20 +40,66 @@ export function MetricCard({
   label,
   value,
   detail,
-  tone = "default"
+  tone = "default",
+  icon,
+  signal
 }: {
   label: string;
   value: string;
   detail: string;
   tone?: "default" | "positive" | "warning";
+  icon?: ReactNode;
+  signal?: string;
 }) {
   return (
     <article className={`metric-card tone-${tone}`}>
-      <span>{label}</span>
-      <strong>{value}</strong>
+      <div className="metric-card-top">
+        <span>{label}</span>
+        {icon ? <span className="metric-icon">{icon}</span> : null}
+      </div>
+      <div className="metric-value-row">
+        <strong aria-label={value}>
+          <AnimatedMetricValue value={value} />
+        </strong>
+        {signal ? <span className="metric-signal">{signal}</span> : null}
+      </div>
       <small>{detail}</small>
     </article>
   );
+}
+
+function AnimatedMetricValue({ value }: { value: string }) {
+  const [display, setDisplay] = useState(value);
+  const canAnimate =
+    /^([^0-9-]*)(-?[\d,.]+)(.*)$/.test(value) &&
+    !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  useEffect(() => {
+    if (!canAnimate) return;
+    const match = value.match(/^([^0-9-]*)(-?[\d,.]+)(.*)$/);
+    if (!match) return;
+    const [, prefix = "", numericText = "", suffix = ""] = match;
+    const target = Number(numericText.replaceAll(",", ""));
+    if (!Number.isFinite(target)) return;
+    const decimals = numericText.includes(".") ? (numericText.split(".")[1]?.length ?? 0) : 0;
+    const startedAt = performance.now();
+    const duration = 680;
+    let frame = 0;
+    const tick = (now: number) => {
+      const progress = Math.min((now - startedAt) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const numeric = (target * eased).toLocaleString(undefined, {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals
+      });
+      setDisplay(`${prefix}${numeric}${suffix}`);
+      if (progress < 1) frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [canAnimate, value]);
+
+  return <span aria-hidden="true">{canAnimate ? display : value}</span>;
 }
 
 export function Badge({

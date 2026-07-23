@@ -1,6 +1,8 @@
 import {
   Activity,
   Bell,
+  BriefcaseBusiness,
+  ChevronDown,
   ChevronRight,
   CircleAlert,
   Files,
@@ -99,6 +101,16 @@ export function AppShell() {
             <X />
           </button>
         </div>
+        <div className="workspace-switcher" aria-label="Current workspace">
+          <span className="workspace-icon">
+            <BriefcaseBusiness size={15} />
+          </span>
+          <span>
+            <strong>Private Wealth</strong>
+            <small>Advisory pod · 01</small>
+          </span>
+          <ChevronDown size={14} />
+        </div>
         <nav aria-label="Primary navigation">
           <p className="nav-label">Workspace</p>
           {navigation
@@ -139,6 +151,16 @@ export function AppShell() {
             ))}
         </nav>
         <div className="sidebar-foot">
+          <div className="governance-mode">
+            <span className="governance-icon">
+              <ShieldCheck size={15} />
+            </span>
+            <span>
+              <strong>Governance mode</strong>
+              <small>All controls enforced</small>
+            </span>
+            <span className="live-pulse" aria-label="Online" />
+          </div>
           <div className="environment">
             <span className="status-dot" />
             Demo environment
@@ -165,8 +187,18 @@ export function AppShell() {
             </button>
             <div>
               <span className="eyebrow">Advisor workspace</span>
-              <strong>{title ?? "FiduciaryOS"}</strong>
+              <strong>
+                <span className="topbar-product">FOS</span>
+                <span className="topbar-divider">/</span>
+                {title ?? "FiduciaryOS"}
+              </strong>
             </div>
+          </div>
+          <div className="topbar-system-status" aria-label="System controls active">
+            <span className="live-pulse" />
+            <span>Deterministic core</span>
+            <i />
+            <span>Governed AI</span>
           </div>
           <div className="topbar-actions" ref={actionsRef}>
             <div className="action-anchor">
@@ -243,6 +275,7 @@ export function AppShell() {
                   <strong>Elena Morgan</strong>
                   <span>CFP® · Demo advisor</span>
                 </span>
+                <ChevronDown className="advisor-chevron" size={14} />
               </button>
               {openMenu === "advisor" ? (
                 <section
@@ -288,7 +321,9 @@ export function AppShell() {
           </div>
         </header>
         <main className="page">
-          <Outlet />
+          <div className="route-stage" key={location.pathname}>
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>
