@@ -2,6 +2,7 @@ import {
   ArrowRight,
   BriefcaseBusiness,
   CalendarClock,
+  FileCheck2,
   Gauge,
   Home,
   Landmark,
@@ -72,6 +73,10 @@ export function HouseholdPage() {
         </div>
         <div className="hero-actions">
           <EvidenceCheck>100% synthetic demo data</EvidenceCheck>
+          <Link className="button secondary" to="evidence-intake">
+            <FileCheck2 size={16} />
+            Add source evidence
+          </Link>
           <Link className="button primary" to="compare">
             Compare decisions
             <ArrowRight size={16} />

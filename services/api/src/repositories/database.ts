@@ -4,6 +4,8 @@ import type {
   DecisionPassportPayload,
   DecisionPassportProof,
   DecisionPassportStatus,
+  EvidenceDocument,
+  ExtractedEvidenceFact,
   PassportValidityCheck,
   RecommendationDraft,
   ScenarioComparisonResponse
@@ -103,6 +105,33 @@ interface AuditRow {
   readonly metadata_json: string;
   readonly previous_hash: string | null;
   readonly event_hash: string;
+}
+
+interface EvidenceDocumentRow {
+  readonly id: string;
+  readonly household_id: string;
+  readonly document_type: EvidenceDocument["documentType"];
+  readonly file_name: string;
+  readonly status: EvidenceDocument["status"];
+  readonly effective_at: string;
+  readonly ingested_at: string;
+  readonly confirmed_at: string | null;
+  readonly reviewer_id: string | null;
+  readonly content_hash: string;
+  readonly extraction_method: EvidenceDocument["extractionMethod"];
+}
+
+interface EvidenceFactRow {
+  readonly id: string;
+  readonly field_path: string;
+  readonly label: string;
+  readonly value_json: string;
+  readonly value_type: ExtractedEvidenceFact["valueType"];
+  readonly unit: string | null;
+  readonly source_excerpt: string;
+  readonly confidence: number;
+  readonly status: ExtractedEvidenceFact["status"];
+  readonly affects_json: string;
 }
 
 export class DatabaseRepository {
@@ -229,6 +258,156 @@ export class DatabaseRepository {
         );
     const result = await statement.all<EventRow>();
     return result.results.map((row) => parseJson<FinancialEvent>(row.payload_json));
+  }
+
+  async saveEvidenceDocument(document: EvidenceDocument, sourceText: string): Promise<void> {
+    const statements: D1PreparedStatement[] = [
+      this.#db
+        .prepare(
+          "INSERT INTO evidence_documents (id, household_id, document_type, file_name, status, effective_at, ingested_at, confirmed_at, reviewer_id, content_hash, source_text, extraction_method, metadata_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        )
+        .bind(
+          document.id,
+          document.householdId,
+          document.documentType,
+          document.fileName,
+          document.status,
+          document.effectiveAt,
+          document.ingestedAt,
+          document.confirmedAt,
+          document.reviewerId,
+          document.contentHash,
+          sourceText,
+          document.extractionMethod,
+          JSON.stringify({ factCount: document.facts.length })
+        )
+    ];
+    for (const fact of document.facts) {
+      statements.push(
+        this.#db
+          .prepare(
+            "INSERT INTO evidence_extractions (id, document_id, household_id, field_path, label, value_json, value_type, unit, source_excerpt, confidence, status, affects_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+          )
+          .bind(
+            fact.id,
+            document.id,
+            document.householdId,
+            fact.fieldPath,
+            fact.label,
+            JSON.stringify(fact.value),
+            fact.valueType,
+            fact.unit,
+            fact.sourceExcerpt,
+            fact.confidence,
+            fact.status,
+            JSON.stringify(fact.affectsOpportunities)
+          )
+      );
+    }
+    await this.#db.batch(statements);
+  }
+
+  async listEvidenceDocuments(householdId: string): Promise<readonly EvidenceDocument[]> {
+    const rows = await this.#db
+      .prepare(
+        "SELECT id, household_id, document_type, file_name, status, effective_at, ingested_at, confirmed_at, reviewer_id, content_hash, extraction_method FROM evidence_documents WHERE household_id = ? ORDER BY ingested_at DESC"
+      )
+      .bind(householdId)
+      .all<EvidenceDocumentRow>();
+    return Promise.all(rows.results.map((row) => this.hydrateEvidenceDocument(row)));
+  }
+
+  async getEvidenceDocument(id: string): Promise<EvidenceDocument | null> {
+    const row = await this.#db
+      .prepare(
+        "SELECT id, household_id, document_type, file_name, status, effective_at, ingested_at, confirmed_at, reviewer_id, content_hash, extraction_method FROM evidence_documents WHERE id = ?"
+      )
+      .bind(id)
+      .first<EvidenceDocumentRow>();
+    return row ? this.hydrateEvidenceDocument(row) : null;
+  }
+
+  async reviewEvidenceDocument(input: {
+    readonly document: EvidenceDocument;
+    readonly reviewerId: string;
+    readonly reviewedAt: string;
+    readonly decision: "CONFIRM" | "REJECT";
+    readonly selectedFacts: readonly ExtractedEvidenceFact[];
+    readonly updatedHousehold: HouseholdSnapshot | null;
+  }): Promise<void> {
+    const factIds = new Set(input.selectedFacts.map((fact) => fact.id));
+    const statements: D1PreparedStatement[] = [
+      this.#db
+        .prepare(
+          "UPDATE evidence_documents SET status = ?, confirmed_at = ?, reviewer_id = ? WHERE id = ? AND status = 'EXTRACTED'"
+        )
+        .bind(
+          input.decision === "CONFIRM" ? "CONFIRMED" : "REJECTED",
+          input.decision === "CONFIRM" ? input.reviewedAt : null,
+          input.reviewerId,
+          input.document.id
+        )
+    ];
+    for (const fact of input.document.facts) {
+      const selected = factIds.has(fact.id);
+      const status =
+        input.decision === "CONFIRM" && selected
+          ? "CONFIRMED"
+          : input.decision === "REJECT" || !selected
+            ? "REJECTED"
+            : fact.status;
+      statements.push(
+        this.#db
+          .prepare(
+            "UPDATE evidence_extractions SET status = ? WHERE id = ? AND document_id = ? AND status = 'PROPOSED'"
+          )
+          .bind(status, fact.id, input.document.id)
+      );
+      if (status !== "CONFIRMED") continue;
+      statements.push(
+        this.#db
+          .prepare(
+            "INSERT INTO source_facts (id, household_id, category, field_path, value_json, source_id, source_type, observed_at, recorded_at, confidence) VALUES (?, ?, 'CLIENT_FACT', ?, ?, ?, 'DOCUMENT', ?, ?, ?)"
+          )
+          .bind(
+            fact.id,
+            input.document.householdId,
+            fact.fieldPath,
+            JSON.stringify(fact.value),
+            input.document.id,
+            input.document.effectiveAt,
+            input.reviewedAt,
+            fact.confidence
+          ),
+        this.#db
+          .prepare(
+            "UPDATE source_facts SET superseded_by = ? WHERE household_id = ? AND field_path = ? AND id != ? AND superseded_by IS NULL"
+          )
+          .bind(fact.id, input.document.householdId, fact.fieldPath, fact.id)
+      );
+    }
+    if (input.updatedHousehold) {
+      statements.push(
+        this.#db
+          .prepare("UPDATE households SET snapshot_json = ?, updated_at = ? WHERE id = ?")
+          .bind(
+            JSON.stringify(input.updatedHousehold),
+            input.reviewedAt,
+            input.document.householdId
+          )
+      );
+    }
+    await this.#db.batch(statements);
+  }
+
+  async getLatestPassportStatus(householdId: string): Promise<DecisionPassportStatus | null> {
+    const row = await this.#db
+      .prepare(
+        "SELECT status FROM decision_passports WHERE household_id = ? ORDER BY issued_at DESC LIMIT 1"
+      )
+      .bind(householdId)
+      .first<{ status: DecisionPassportStatus }>();
+    return row?.status ?? null;
   }
 
   async saveScenarioRun(run: ScenarioComparisonResponse): Promise<void> {
@@ -537,6 +716,40 @@ export class DatabaseRepository {
       previousHash: row.previous_hash,
       eventHash: row.event_hash
     }));
+  }
+
+  private async hydrateEvidenceDocument(row: EvidenceDocumentRow): Promise<EvidenceDocument> {
+    const facts = await this.#db
+      .prepare(
+        "SELECT id, field_path, label, value_json, value_type, unit, source_excerpt, confidence, status, affects_json FROM evidence_extractions WHERE document_id = ? ORDER BY rowid ASC"
+      )
+      .bind(row.id)
+      .all<EvidenceFactRow>();
+    return {
+      id: row.id,
+      householdId: row.household_id,
+      documentType: row.document_type,
+      fileName: row.file_name,
+      status: row.status,
+      effectiveAt: row.effective_at,
+      ingestedAt: row.ingested_at,
+      confirmedAt: row.confirmed_at,
+      reviewerId: row.reviewer_id,
+      contentHash: row.content_hash,
+      extractionMethod: row.extraction_method,
+      facts: facts.results.map((fact) => ({
+        id: fact.id,
+        fieldPath: fact.field_path,
+        label: fact.label,
+        value: parseJson<string | number>(fact.value_json),
+        valueType: fact.value_type,
+        unit: fact.unit,
+        sourceExcerpt: fact.source_excerpt,
+        confidence: fact.confidence,
+        status: fact.status,
+        affectsOpportunities: parseJson<string[]>(fact.affects_json)
+      }))
+    };
   }
 }
 

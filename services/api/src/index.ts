@@ -4,8 +4,13 @@ import {
   type DashboardHousehold,
   type DashboardResponse,
   type DecisionPassportResponse,
+  type EvidenceDocumentReviewResponse,
+  type EvidenceDocumentsResponse,
+  type OpportunityRadarResponse,
   type ScenarioComparisonResponse,
   type ValidityMetric,
+  evidenceDocumentIngestRequestSchema,
+  evidenceDocumentReviewRequestSchema,
   passportMonitorRequestSchema,
   recommendationRequestSchema,
   reviewRequestSchema,
@@ -39,7 +44,13 @@ import {
 import { evaluateRecommendation } from "@fidt/policy-engine";
 import { Hono } from "hono";
 import { ZodError } from "zod";
+import {
+  applyConfirmedEvidence,
+  EvidenceExtractionError,
+  extractEvidenceDocument
+} from "./evidence";
 import { getLiveData } from "./live-data";
+import { buildOpportunityRadar } from "./opportunities";
 import {
   evaluatePassportValidity,
   issueDecisionPassport,
@@ -102,13 +113,25 @@ app.get("/api/dashboard", async (context) => {
       };
     })
   );
+  const radarResponses = await Promise.all(
+    rows.map(async (row) => {
+      const household = JSON.parse(row.snapshot_json) as HouseholdSnapshot;
+      return buildOpportunityRadar({
+        household,
+        constitution: await repository.getCurrentConstitution(household.id),
+        events: events.filter((event) => event.householdId === household.id),
+        documents: await repository.listEvidenceDocuments(household.id),
+        latestPassportStatus: await repository.getLatestPassportStatus(household.id)
+      });
+    })
+  );
   const response: DashboardResponse = {
     households,
     events,
     summary: {
       households: households.length,
       assetsTracked: households.reduce((sum, household) => sum + household.investableAssets, 0),
-      openOpportunities: events.filter((event) => event.status === "OPEN").length,
+      openOpportunities: radarResponses.reduce((sum, radar) => sum + radar.opportunities.length, 0),
       complianceReviews: 0
     },
     liveData: liveData.observations
@@ -141,6 +164,201 @@ app.get("/api/households/:householdId", async (context) => {
     resilienceOptionsForStrategies(household, demoStrategies, decisionCapital)
   );
   return context.json({ household, clientConstitution, events, latestScenarios, resilience });
+});
+
+app.get("/api/opportunities", async (context) => {
+  const repository = await repositoryFor(context.env);
+  const rows = await repository.listHouseholds();
+  const now = new Date();
+  const radarResponses = await Promise.all(
+    rows.map(async (row) => {
+      const household = JSON.parse(row.snapshot_json) as HouseholdSnapshot;
+      const [constitution, events, documents, latestPassportStatus] = await Promise.all([
+        repository.getCurrentConstitution(household.id),
+        repository.listEvents(household.id),
+        repository.listEvidenceDocuments(household.id),
+        repository.getLatestPassportStatus(household.id)
+      ]);
+      return buildOpportunityRadar({
+        household,
+        constitution,
+        events,
+        documents,
+        latestPassportStatus,
+        now
+      });
+    })
+  );
+  const opportunities = radarResponses
+    .flatMap((response) => response.opportunities)
+    .sort((left, right) => right.score - left.score || left.title.localeCompare(right.title));
+  const response: OpportunityRadarResponse = {
+    generatedAt: now.toISOString(),
+    methodologyVersion: "advisor-opportunity-radar-v1",
+    summary: {
+      actionNow: opportunities.filter((opportunity) => opportunity.score >= 75).length,
+      evidenceBlocked: opportunities.filter(
+        (opportunity) => opportunity.evidence.readiness === "BLOCKED"
+      ).length,
+      decisionCapital: radarResponses.reduce(
+        (sum, radar) => sum + radar.summary.decisionCapital,
+        0
+      ),
+      passportsAtRisk: radarResponses.reduce(
+        (sum, response) => sum + response.summary.passportsAtRisk,
+        0
+      )
+    },
+    opportunities
+  };
+  return context.json(response);
+});
+
+app.get("/api/households/:householdId/opportunities", async (context) => {
+  const repository = await repositoryFor(context.env);
+  const household = await requireHousehold(repository, context.req.param("householdId"));
+  const [constitution, events, documents, latestPassportStatus] = await Promise.all([
+    repository.getCurrentConstitution(household.id),
+    repository.listEvents(household.id),
+    repository.listEvidenceDocuments(household.id),
+    repository.getLatestPassportStatus(household.id)
+  ]);
+  return context.json(
+    buildOpportunityRadar({
+      household,
+      constitution,
+      events,
+      documents,
+      latestPassportStatus
+    })
+  );
+});
+
+app.get("/api/households/:householdId/evidence-documents", async (context) => {
+  const repository = await repositoryFor(context.env);
+  const household = await requireHousehold(repository, context.req.param("householdId"));
+  const documents = await repository.listEvidenceDocuments(household.id);
+  const response: EvidenceDocumentsResponse = {
+    householdId: household.id,
+    documents,
+    summary: {
+      totalDocuments: documents.length,
+      confirmedDocuments: documents.filter((document) => document.status === "CONFIRMED").length,
+      proposedFacts: documents
+        .flatMap((document) => document.facts)
+        .filter((fact) => fact.status === "PROPOSED").length,
+      confirmedFacts: documents
+        .flatMap((document) => document.facts)
+        .filter((fact) => fact.status === "CONFIRMED").length
+    }
+  };
+  return context.json(response);
+});
+
+app.post("/api/households/:householdId/evidence-documents", async (context) => {
+  const repository = await repositoryFor(context.env);
+  const household = await requireHousehold(repository, context.req.param("householdId"));
+  const input = evidenceDocumentIngestRequestSchema.parse(await context.req.json());
+  let document;
+  try {
+    document = await extractEvidenceDocument(household.id, input);
+  } catch (error) {
+    if (error instanceof EvidenceExtractionError) throw new HttpError(422, error.message);
+    throw error;
+  }
+  await repository.saveEvidenceDocument(document, input.content);
+  await repository.appendAudit({
+    householdId: household.id,
+    actorType: "USER",
+    actorId: context.get("advisor").id,
+    action: "EVIDENCE_DOCUMENT_INGESTED",
+    entityType: "evidence_document",
+    entityId: document.id,
+    metadata: {
+      documentType: document.documentType,
+      contentHash: document.contentHash,
+      extractionMethod: document.extractionMethod,
+      proposedFieldPaths: document.facts.map((fact) => fact.fieldPath)
+    }
+  });
+  return context.json(document, 201);
+});
+
+app.post("/api/evidence-documents/:documentId/review", async (context) => {
+  const repository = await repositoryFor(context.env);
+  const input = evidenceDocumentReviewRequestSchema.parse(await context.req.json());
+  const document = await repository.getEvidenceDocument(context.req.param("documentId"));
+  if (!document) throw new HttpError(404, "Evidence document not found");
+  if (document.status !== "EXTRACTED") {
+    throw new HttpError(409, "This evidence document has already been reviewed");
+  }
+  const household = await requireHousehold(repository, document.householdId);
+  const requestedIds = new Set(input.factIds);
+  const selectedFacts = document.facts.filter((fact) => requestedIds.has(fact.id));
+  if (input.decision === "CONFIRM") {
+    if (selectedFacts.length === 0) {
+      throw new HttpError(422, "Select at least one extracted fact to update the twin");
+    }
+    if (selectedFacts.length !== requestedIds.size) {
+      throw new HttpError(422, "One or more selected facts do not belong to this document");
+    }
+  }
+  const reviewedAt = new Date().toISOString();
+  const updatedHousehold =
+    input.decision === "CONFIRM"
+      ? applyConfirmedEvidence(household, document, selectedFacts, reviewedAt)
+      : null;
+  await repository.reviewEvidenceDocument({
+    document,
+    reviewerId: context.get("advisor").id,
+    reviewedAt,
+    decision: input.decision,
+    selectedFacts,
+    updatedHousehold
+  });
+  const reviewAudit = await repository.appendAudit({
+    householdId: household.id,
+    actorType: "USER",
+    actorId: context.get("advisor").id,
+    action:
+      input.decision === "CONFIRM" ? "EVIDENCE_DOCUMENT_CONFIRMED" : "EVIDENCE_DOCUMENT_REJECTED",
+    entityType: "evidence_document",
+    entityId: document.id,
+    metadata: {
+      rationale: input.rationale,
+      contentHash: document.contentHash,
+      selectedFactIds: selectedFacts.map((fact) => fact.id),
+      selectedFieldPaths: selectedFacts.map((fact) => fact.fieldPath)
+    }
+  });
+  const auditEventIds = [reviewAudit.id];
+  if (updatedHousehold) {
+    const twinAudit = await repository.appendAudit({
+      householdId: household.id,
+      actorType: "SYSTEM",
+      actorId: "evidence-to-twin-v1",
+      action: "DIGITAL_TWIN_UPDATED",
+      entityType: "household",
+      entityId: household.id,
+      metadata: {
+        documentId: document.id,
+        documentContentHash: document.contentHash,
+        appliedFieldPaths: selectedFacts.map((fact) => fact.fieldPath),
+        priorAsOf: household.asOf,
+        updatedAsOf: updatedHousehold.asOf
+      }
+    });
+    auditEventIds.push(twinAudit.id);
+  }
+  const reviewedDocument = await repository.getEvidenceDocument(document.id);
+  if (!reviewedDocument) throw new Error("Reviewed document could not be loaded");
+  const response: EvidenceDocumentReviewResponse = {
+    document: reviewedDocument,
+    twinUpdated: updatedHousehold !== null,
+    appliedFieldPaths: selectedFacts.map((fact) => fact.fieldPath),
+    auditEventIds
+  };
+  return context.json(response, 201);
 });
 
 app.post("/api/households/:householdId/workbench", async (context) => {

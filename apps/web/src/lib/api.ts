@@ -2,8 +2,14 @@ import type {
   AuditResponse,
   DashboardResponse,
   DecisionPassportResponse,
+  EvidenceDocument,
+  EvidenceDocumentIngestRequest,
+  EvidenceDocumentReviewRequest,
+  EvidenceDocumentReviewResponse,
+  EvidenceDocumentsResponse,
   HouseholdResponse,
   LiveDataResponse,
+  OpportunityRadarResponse,
   RecommendationRequest,
   RecommendationResponse,
   ReviewResponse,
@@ -43,10 +49,29 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   dashboard: () => request<DashboardResponse>("/api/dashboard"),
+  opportunities: () => request<OpportunityRadarResponse>("/api/opportunities"),
+  householdOpportunities: (householdId: string) =>
+    request<OpportunityRadarResponse>(
+      `/api/households/${encodeURIComponent(householdId)}/opportunities`
+    ),
   household: (householdId: string) =>
     request<HouseholdResponse>(`/api/households/${encodeURIComponent(householdId)}`),
   liveData: (refresh = false) =>
     request<LiveDataResponse>(`/api/live-data${refresh ? "?refresh=true" : ""}`),
+  evidenceDocuments: (householdId: string) =>
+    request<EvidenceDocumentsResponse>(
+      `/api/households/${encodeURIComponent(householdId)}/evidence-documents`
+    ),
+  ingestEvidenceDocument: (householdId: string, input: EvidenceDocumentIngestRequest) =>
+    request<EvidenceDocument>(
+      `/api/households/${encodeURIComponent(householdId)}/evidence-documents`,
+      { method: "POST", body: JSON.stringify(input) }
+    ),
+  reviewEvidenceDocument: (documentId: string, input: EvidenceDocumentReviewRequest) =>
+    request<EvidenceDocumentReviewResponse>(
+      `/api/evidence-documents/${encodeURIComponent(documentId)}/review`,
+      { method: "POST", body: JSON.stringify(input) }
+    ),
   compare: (householdId: string, input: ScenarioComparisonRequest) =>
     request<ScenarioComparisonResponse>(
       `/api/households/${encodeURIComponent(householdId)}/scenarios`,

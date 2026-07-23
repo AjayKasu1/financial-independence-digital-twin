@@ -5,9 +5,11 @@ import {
   ChevronDown,
   ChevronRight,
   CircleAlert,
+  FileInput,
   Files,
   LayoutDashboard,
   Menu,
+  Radar,
   Scale,
   ShieldCheck,
   SlidersHorizontal,
@@ -26,10 +28,17 @@ const demoHouseholdId = "household-patel-demo";
 
 const navigation = [
   { to: "/", label: "Advisor overview", icon: LayoutDashboard, end: true },
+  { to: "/opportunities", label: "Opportunity radar", icon: Radar, end: true },
   { to: `/households/${demoHouseholdId}`, label: "Household twin", icon: Users, end: true },
   { to: `/households/${demoHouseholdId}/compare`, label: "Decision lab", icon: Scale },
   { to: "/workbench", label: "Advisor workbench", icon: SlidersHorizontal, end: true },
   { to: `/households/${demoHouseholdId}/audit`, label: "Evidence & audit", icon: ShieldCheck },
+  {
+    to: `/households/${demoHouseholdId}/evidence-intake`,
+    label: "Evidence intake",
+    icon: FileInput,
+    system: true
+  },
   { to: "/evidence", label: "Evidence library", icon: Files, system: true },
   { to: "/connectors", label: "Data connectors", icon: Activity, system: true }
 ];
@@ -99,7 +108,9 @@ export function AppShell() {
     ? "Decision Passport"
     : location.pathname.includes("/recommendation")
       ? "Recommendation studio"
-      : navigationTitle;
+      : location.pathname.includes("/evidence-intake")
+        ? "Evidence-to-Twin"
+        : navigationTitle;
 
   return (
     <div className="app-shell">
@@ -274,8 +285,12 @@ export function AppShell() {
                   ) : (
                     <div className="popover-state">Loading decision signals…</div>
                   )}
-                  <Link className="popover-footer" to="/" onClick={() => setOpenMenu(null)}>
-                    Open advisor overview
+                  <Link
+                    className="popover-footer"
+                    to="/opportunities"
+                    onClick={() => setOpenMenu(null)}
+                  >
+                    Open Opportunity Radar
                     <ChevronRight size={15} />
                   </Link>
                 </section>

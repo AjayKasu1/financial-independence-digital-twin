@@ -56,8 +56,8 @@ export function DashboardPage() {
           </div>
           <h1>Good {greeting}, Cece.</h1>
           <p>
-            Three decision moments need attention. The household twin has already assembled the
-            relevant evidence.
+            The Opportunity Radar has ranked the decision moments that need attention and exposed
+            the evidence still required.
           </p>
         </div>
         <div className="trust-stamp">
@@ -86,9 +86,9 @@ export function DashboardPage() {
           signal="Modeled"
         />
         <MetricCard
-          label="Open decision events"
+          label="Open opportunities"
           value={String(data.summary.openOpportunities)}
-          detail={`${data.events.filter((event) => event.severity === "HIGH").length} high-priority`}
+          detail={`${data.events.filter((event) => event.severity === "HIGH").length} high-severity source signals`}
           tone="warning"
           icon={<Radar size={17} />}
           signal="Review"
@@ -113,6 +113,9 @@ export function DashboardPage() {
                 <i /> Continuously monitored
               </span>
               <Badge tone="warn">{data.events.length} signals</Badge>
+              <Link className="button secondary compact-button" to="/opportunities">
+                Open Radar <ArrowRight size={14} />
+              </Link>
             </div>
           </div>
           <div className="event-list">

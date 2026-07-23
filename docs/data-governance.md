@@ -13,6 +13,21 @@
 | Client Constitution  | Versioned synthetic preferences and constraints                         | Dual approval, effective dating, change rationale                    |
 | Decision Passport    | Immutable signed payload plus monitored state                           | Asymmetric/KMS signing, key rotation, independent verification       |
 | Household resilience | Deterministic output from household facts and an explicit stress vector | Versioned method, reviewed policy floors, reproducible shock library |
+| Evidence document    | Synthetic structured text, SHA-256 content hash, allowlisted extraction | Encrypted object storage, malware scan, retention and access policy  |
+| Extracted fact       | Proposed until advisor confirmation; source excerpt and confidence      | Dual control for sensitive fields, reconciliation and exception SLA  |
+| Opportunity score    | Deterministic queue rank with visible reasons and blockers              | Versioned methodology, drift review, fairness and outcome monitoring |
+
+## Evidence admission
+
+The demo accepts only the three included synthetic structured statement types. Extraction is deterministic and field-allowlisted. Raw provider text, arbitrary JSON paths, and LLM-created facts are not admitted.
+
+Each document receives a SHA-256 content hash. Every extraction retains the exact source line, normalized value, confidence, destination field, affected decision surfaces, and review status. A proposed fact cannot change calculations. Advisor confirmation writes the value and document provenance to the household snapshot, records it in `source_facts`, supersedes the prior active fact for the same path, and appends two distinct audit events.
+
+Production personal-document ingestion would additionally require encrypted binary storage, malware scanning, tenant-scoped authorization, document-class validation, redaction controls, retention/deletion policy, and a privacy-impact assessment. None of those controls are implied by the synthetic demo.
+
+## Opportunity Radar boundary
+
+The Radar score is a deterministic work-queue priority, not a financial recommendation, product score, or approval. It ranks deadline urgency, capital at stake, constitution status, evidence readiness, and passport impact. All inputs and reasons are returned with the score. Recommendation approval and execution remain separate server-controlled workflows.
 
 ## Public connectors
 

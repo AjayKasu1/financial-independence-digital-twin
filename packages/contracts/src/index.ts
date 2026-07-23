@@ -506,6 +506,134 @@ export interface LiveDataResponse {
   readonly connectors: readonly SourceConnectorStatus[];
 }
 
+export const evidenceDocumentTypeSchema = z.enum([
+  "RSU_STATEMENT",
+  "PAYSTUB",
+  "MORTGAGE_STATEMENT"
+]);
+
+export type EvidenceDocumentType = z.infer<typeof evidenceDocumentTypeSchema>;
+export type EvidenceDocumentStatus = "EXTRACTED" | "CONFIRMED" | "REJECTED";
+export type EvidenceFactStatus = "PROPOSED" | "CONFIRMED" | "REJECTED";
+
+export interface ExtractedEvidenceFact {
+  readonly id: string;
+  readonly fieldPath: string;
+  readonly label: string;
+  readonly value: string | number;
+  readonly valueType: "CURRENCY" | "RATE" | "DATE" | "NUMBER" | "TEXT";
+  readonly unit: string | null;
+  readonly sourceExcerpt: string;
+  readonly confidence: number;
+  readonly status: EvidenceFactStatus;
+  readonly affectsOpportunities: readonly string[];
+}
+
+export interface EvidenceDocument {
+  readonly id: string;
+  readonly householdId: string;
+  readonly documentType: EvidenceDocumentType;
+  readonly fileName: string;
+  readonly status: EvidenceDocumentStatus;
+  readonly effectiveAt: string;
+  readonly ingestedAt: string;
+  readonly confirmedAt: string | null;
+  readonly reviewerId: string | null;
+  readonly contentHash: string;
+  readonly extractionMethod: "DETERMINISTIC_STRUCTURED_V1";
+  readonly facts: readonly ExtractedEvidenceFact[];
+}
+
+export interface EvidenceDocumentsResponse {
+  readonly householdId: string;
+  readonly documents: readonly EvidenceDocument[];
+  readonly summary: {
+    readonly totalDocuments: number;
+    readonly confirmedDocuments: number;
+    readonly proposedFacts: number;
+    readonly confirmedFacts: number;
+  };
+}
+
+export const evidenceDocumentIngestRequestSchema = z.object({
+  documentType: evidenceDocumentTypeSchema,
+  fileName: z.string().trim().min(3).max(180),
+  effectiveAt: z.string().datetime().optional(),
+  content: z.string().min(20).max(50_000)
+});
+
+export type EvidenceDocumentIngestRequest = z.infer<typeof evidenceDocumentIngestRequestSchema>;
+
+export const evidenceDocumentReviewRequestSchema = z.object({
+  decision: z.enum(["CONFIRM", "REJECT"]),
+  factIds: z.array(z.string().min(1)).max(30),
+  rationale: z.string().trim().min(10).max(2_000)
+});
+
+export type EvidenceDocumentReviewRequest = z.infer<typeof evidenceDocumentReviewRequestSchema>;
+
+export interface EvidenceDocumentReviewResponse {
+  readonly document: EvidenceDocument;
+  readonly twinUpdated: boolean;
+  readonly appliedFieldPaths: readonly string[];
+  readonly auditEventIds: readonly string[];
+}
+
+export type OpportunityCategory =
+  "EQUITY_COMPENSATION" | "CONCENTRATION" | "REAL_ESTATE" | "RESILIENCE" | "EVIDENCE_GAP";
+
+export type OpportunityPriority = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+export type EvidenceReadiness = "READY" | "PARTIAL" | "BLOCKED";
+
+export interface AdvisorOpportunity {
+  readonly id: string;
+  readonly householdId: string;
+  readonly householdName: string;
+  readonly category: OpportunityCategory;
+  readonly priority: OpportunityPriority;
+  readonly score: number;
+  readonly title: string;
+  readonly summary: string;
+  readonly detectedAt: string;
+  readonly deadline: string | null;
+  readonly triggerEventId: string | null;
+  readonly decisionValue: {
+    readonly amount: number;
+    readonly label: string;
+  } | null;
+  readonly evidence: {
+    readonly readiness: EvidenceReadiness;
+    readonly confirmedSources: readonly string[];
+    readonly missingSources: readonly string[];
+  };
+  readonly constitution: {
+    readonly status: "ALIGNED" | "AT_RISK" | "BREACH";
+    readonly tests: readonly string[];
+  };
+  readonly passport: {
+    readonly status:
+      "NO_ACTIVE_PASSPORT" | "VALID" | "REVIEW_REQUIRED" | "INVALIDATED" | "RETEST_REQUIRED";
+    readonly detail: string;
+  };
+  readonly reasons: readonly string[];
+  readonly action: {
+    readonly label: string;
+    readonly to: string;
+  };
+}
+
+export interface OpportunityRadarResponse {
+  readonly generatedAt: string;
+  readonly methodologyVersion: "advisor-opportunity-radar-v1";
+  readonly summary: {
+    readonly actionNow: number;
+    readonly evidenceBlocked: number;
+    readonly decisionCapital: number;
+    readonly passportsAtRisk: number;
+  };
+  readonly opportunities: readonly AdvisorOpportunity[];
+}
+
 export const recommendationRequestSchema = z.object({
   runId: z.string().min(1),
   advisorRationale: z.string().max(2_000).optional(),

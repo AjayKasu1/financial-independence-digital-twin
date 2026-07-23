@@ -16,6 +16,10 @@ This is a production-shaped demonstration, not financial advice. The included Pa
 - A versioned Client Constitution turns liquidity, concentration, workload, FI-age, and modeled-success preferences into executable controls.
 - A recommendation statement is labeled as client fact, calculation, external fact, assumption, advisor judgment, or AI suggestion.
 - Public data has a source URL, observation date, retrieval date, and staleness state.
+- Evidence-to-Twin intake content-hashes synthetic structured statements, extracts only allowlisted fields, and holds every proposed fact outside the twin until an advisor confirms it.
+- Confirmed facts supersede prior field-level evidence, update the canonical twin with document provenance, and create separate evidence-admission and twin-update events in the audit chain.
+- The Advisor Opportunity Radar continuously ranks deadlines, capital at stake, Client Constitution breaches, evidence readiness, and Decision Passport impact with deterministic, reconstructable rules.
+- A blocked opportunity links directly to the missing evidence; an evidence-ready opportunity links into the existing governed Decision Lab.
 - The policy engine blocks guarantees, broken evidence, stale cited public facts, missing alternatives, and undisclosed conflicts.
 - The API rejects approval unless the stored policy result is `APPROVE` and the advisor attests.
 - Failed drafts can be regenerated with stored compliance feedback or replaced by the governed deterministic fallback.
@@ -29,12 +33,18 @@ This is a production-shaped demonstration, not financial advice. The included Pa
 ```mermaid
 flowchart LR
   A["Synthetic household facts"] --> B["Versioned digital twin"]
+  S["Structured synthetic statements"] --> Q["Evidence extraction<br/>allowlisted · content-hashed"]
+  Q --> CFM["Advisor fact confirmation"]
+  CFM --> B
   X["Decision event"] --> B
   L["Treasury · BLS · FHFA · SEC"] --> B
   B --> C["Deterministic decision engines"]
   W["Advisor Workbench<br/>session-only"] --> C
   W --> O["Household Optionality Score<br/>deterministic stress engine"]
   N["NerdWallet FRI<br/>population context only"] -. "never a score input" .-> O
+  B --> RAD["Advisor Opportunity Radar<br/>deterministic priority + blockers"]
+  RAD --> Q
+  RAD --> C
   C --> D["Scenario comparison"]
   O --> D
   W -. "Promote selected economics" .-> D
@@ -58,7 +68,7 @@ flowchart LR
 - React 19, TypeScript, Vite, React Router
 - Cloudflare Worker with Hono
 - D1 for application/audit data, KV for cache and rate limits
-- R2 and Vectorize planned for the future evidence-document phase
+- R2 and Vectorize planned for future binary-document storage and governed retrieval; the current structured evidence slice uses D1
 - OpenRouter-compatible recommendation orchestration with production ZDR enforcement
 - Vitest, fast-check, ESLint, Prettier, GitHub Actions
 
@@ -113,7 +123,7 @@ The sample API payload is at [`examples/scenario-request.json`](examples/scenari
 
 ## Deploy to Cloudflare
 
-1. Create a D1 database and KV namespace. R2 and Vectorize are not required until the future evidence-document phase.
+1. Create a D1 database and KV namespace. R2 and Vectorize are not required for the current synthetic structured evidence workflow.
 2. Replace the placeholder IDs/names in `services/api/wrangler.jsonc`.
 3. Apply remote migrations:
 
@@ -153,9 +163,9 @@ Keep the API contracts and deterministic packages unchanged. See [`docs/architec
 
 ## Current boundaries
 
-Included: synthetic household planning, a session-only Advisor Workbench, deterministic household stress testing and optionality scoring, governed scenario promotion, shared-capital enforcement, executable client constraints, deterministic counterfactual boundaries, FI projection, rental underwriting, seeded portfolio simulations, debt comparison, fee conflicts, live public observations, governed recommendations, human review, signed Decision Passports, scheduled validity monitoring, automatic invalidation, and audit lineage.
+Included: synthetic household planning, allowlisted structured-document extraction, advisor-confirmed Evidence-to-Twin updates, field-level provenance, a deterministic Advisor Opportunity Radar, a session-only Advisor Workbench, deterministic household stress testing and optionality scoring, governed scenario promotion, shared-capital enforcement, executable client constraints, deterministic counterfactual boundaries, FI projection, rental underwriting, seeded portfolio simulations, debt comparison, fee conflicts, live public observations, governed recommendations, human review, signed Decision Passports, scheduled validity monitoring, automatic invalidation, and audit lineage.
 
-Not included: brokerage connectivity, trading, individualized tax/legal advice, document OCR, multi-tenant billing, custodian write access, or production RIA books and records certification.
+Not included: personal-document upload, binary storage, document OCR, malware scanning, brokerage connectivity, trading, individualized tax/legal advice, multi-tenant billing, custodian write access, or production RIA books and records certification.
 
 ## Documentation
 

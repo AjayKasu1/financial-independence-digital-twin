@@ -7,6 +7,7 @@ import {
   ShieldCheck
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import type { HouseholdResponse, LiveDataResponse } from "@fidt/contracts";
 import { Badge, ErrorState, LoadingState, MetricCard } from "../components/Ui";
 import { api } from "../lib/api";
@@ -65,12 +66,20 @@ export function EvidenceLibraryPage() {
             decision or client-facing explanation.
           </p>
         </div>
-        <div className="trust-stamp">
-          <ShieldCheck />
-          <div>
-            <strong>Provenance required</strong>
-            <span>Source, observation date, retrieval date, and freshness</span>
+        <div className="hero-side-stack">
+          <div className="trust-stamp">
+            <ShieldCheck />
+            <div>
+              <strong>Provenance required</strong>
+              <span>Source, observation date, retrieval date, and freshness</span>
+            </div>
           </div>
+          <Link
+            className="button primary full"
+            to={`/households/${demoHouseholdId}/evidence-intake`}
+          >
+            Admit source evidence
+          </Link>
         </div>
       </section>
 
