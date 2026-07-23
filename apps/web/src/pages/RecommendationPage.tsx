@@ -323,7 +323,7 @@ function RecommendationView({
             <div className="approval-confirmation" role="status">
               <CheckCircle2 />
               <span className="eyebrow">Human approval recorded</span>
-              <strong>Elena Morgan, CFP®</strong>
+              <strong>Cece Sterling</strong>
               <p>{dateTime(review.reviewedAt)}</p>
               {review.passportId ? (
                 <Link

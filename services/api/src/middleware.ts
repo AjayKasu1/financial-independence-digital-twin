@@ -37,9 +37,9 @@ export const securityHeaders: AppMiddleware = async (context, next) => {
 export const authenticate: AppMiddleware = async (context, next) => {
   if (context.env.APP_ENV !== "production") {
     context.set("advisor", {
-      id: "advisor-elena-demo",
-      email: "elena@example.test",
-      name: "Elena Morgan, CFP®"
+      id: "advisor-cece-demo",
+      email: "cece@example.test",
+      name: "Cece Sterling"
     });
     await next();
     return;

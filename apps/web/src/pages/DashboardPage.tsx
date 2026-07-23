@@ -15,6 +15,8 @@ import { Badge, ErrorState, LoadingState, MetricCard } from "../components/Ui";
 import { api } from "../lib/api";
 import { currency, date, percent } from "../lib/format";
 
+const advisorTimeZone = "America/New_York";
+
 export function DashboardPage() {
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [error, setError] = useState("");
@@ -38,18 +40,21 @@ export function DashboardPage() {
   if (error) return <ErrorState message={error} retry={load} />;
   if (!data) return <LoadingState label="Loading advisor intelligence…" />;
   const household = data.households[0];
+  const advisorNow = new Date();
+  const greeting = newYorkGreeting(advisorNow);
+  const advisorDate = newYorkDate(advisorNow);
 
   return (
     <>
       <section className="hero-row">
         <div>
           <div className="hero-meta">
-            <span className="eyebrow coral">Wednesday · July 22</span>
+            <span className="eyebrow coral">{advisorDate} · New York</span>
             <span className="operating-status">
               <i /> Workspace current
             </span>
           </div>
-          <h1>Good afternoon, Elena.</h1>
+          <h1>Good {greeting}, Cece.</h1>
           <p>
             Three decision moments need attention. The household twin has already assembled the
             relevant evidence.
@@ -229,4 +234,29 @@ export function DashboardPage() {
       </section>
     </>
   );
+}
+
+function newYorkGreeting(now: Date): "morning" | "afternoon" | "evening" {
+  const hour = Number(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: advisorTimeZone,
+      hour: "numeric",
+      hourCycle: "h23"
+    }).format(now)
+  );
+  if (hour < 12) return "morning";
+  if (hour < 17) return "afternoon";
+  return "evening";
+}
+
+function newYorkDate(now: Date): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: advisorTimeZone,
+    weekday: "long",
+    month: "long",
+    day: "numeric"
+  }).formatToParts(now);
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((candidate) => candidate.type === type)?.value ?? "";
+  return `${part("weekday")} · ${part("month")} ${part("day")}`;
 }

@@ -128,7 +128,7 @@ export class DatabaseRepository {
           .bind(
             demoHousehold.id,
             demoHousehold.name,
-            "Elena Morgan, CFP®",
+            "Cece Sterling",
             JSON.stringify(demoHousehold),
             now,
             now

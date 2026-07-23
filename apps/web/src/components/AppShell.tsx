@@ -271,10 +271,10 @@ export function AppShell() {
                 aria-controls="advisor-menu"
                 onClick={() => setOpenMenu((current) => (current === "advisor" ? null : "advisor"))}
               >
-                <span className="avatar">EM</span>
+                <span className="avatar">CS</span>
                 <span className="advisor-name">
-                  <strong>Elena Morgan</strong>
-                  <span>CFP® · Demo advisor</span>
+                  <strong>Cece Sterling</strong>
+                  <span>Demo advisor · Synthetic</span>
                 </span>
                 <ChevronDown className="advisor-chevron" size={14} />
               </button>
@@ -285,9 +285,9 @@ export function AppShell() {
                   aria-label="Advisor profile"
                 >
                   <div className="profile-summary">
-                    <span className="avatar profile-avatar">EM</span>
+                    <span className="avatar profile-avatar">CS</span>
                     <div>
-                      <strong>Elena Morgan, CFP®</strong>
+                      <strong>Cece Sterling</strong>
                       <span>Demo advisor · FiduciaryOS</span>
                     </div>
                   </div>
