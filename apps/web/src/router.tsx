@@ -8,6 +8,7 @@ import { EvidenceLibraryPage } from "./pages/EvidenceLibraryPage";
 import { HouseholdPage } from "./pages/HouseholdPage";
 import { PassportPage } from "./pages/PassportPage";
 import { RecommendationPage } from "./pages/RecommendationPage";
+import { WorkbenchPage } from "./pages/WorkbenchPage";
 
 export const router = createBrowserRouter([
   {
@@ -17,6 +18,7 @@ export const router = createBrowserRouter([
       { index: true, element: <DashboardPage /> },
       { path: "evidence", element: <EvidenceLibraryPage /> },
       { path: "connectors", element: <DataConnectorsPage /> },
+      { path: "workbench", element: <WorkbenchPage /> },
       { path: "households/:householdId", element: <HouseholdPage /> },
       { path: "households/:householdId/compare", element: <ComparePage /> },
       { path: "households/:householdId/recommendation", element: <RecommendationPage /> },

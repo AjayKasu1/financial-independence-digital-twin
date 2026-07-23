@@ -5,6 +5,7 @@
 ```mermaid
 flowchart TB
   Browser["React advisor SPA"] -->|"same-origin /api"| Worker["Hono Cloudflare Worker"]
+  Workbench["Session-only workbench"] -->|"no persistence"| Domain
   Worker --> Auth["Access JWT + rate limits"]
   Worker --> D1["D1 repository"]
   Worker --> KV["KV cache"]
@@ -33,16 +34,18 @@ flowchart TB
 
 ## Key request sequence
 
-1. The API validates strategy inputs with Zod.
-2. The domain package runs all strategies under one immutable assumption object and seed.
-3. The API calculates potential advisor-revenue differences and persists the run.
-4. The recommendation orchestrator sees selected household fields, scenario outputs, allowed citations, and conflicts.
-5. Model output must satisfy the recommendation schema; otherwise the deterministic fallback is used.
-6. The policy engine independently evaluates the draft.
-7. A human must attest before approval is stored.
-8. Approval issues an immutable passport whose canonical payload is hashed and signed server-side.
-9. A scheduled monitor evaluates the passport envelope against refreshed data and current household facts.
-10. Scenario, model, passport, monitor, and human actions append to the hash-chained audit table.
+1. The Advisor Workbench can run the same deterministic engines against cloned household facts and session-only constraints. It does not persist results or append audit events.
+2. Promoting a workbench result transfers only its economic scenario inputs into the governed Decision Lab; the signed Client Constitution is restored.
+3. The API validates governed strategy inputs with Zod.
+4. The domain package runs all strategies under one immutable assumption object and seed.
+5. The API calculates potential advisor-revenue differences and persists the governed run.
+6. The recommendation orchestrator sees selected household fields, scenario outputs, allowed citations, and conflicts.
+7. Model output must satisfy the recommendation schema; otherwise the deterministic fallback is used.
+8. The policy engine independently evaluates the draft.
+9. A human must attest before approval is stored.
+10. Approval issues an immutable passport whose canonical payload is hashed and signed server-side.
+11. A scheduled monitor evaluates the passport envelope against refreshed data and current household facts.
+12. Scenario, model, passport, monitor, and human actions append to the hash-chained audit table.
 
 ## Persistence
 

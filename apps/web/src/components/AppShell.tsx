@@ -10,8 +10,8 @@ import {
   Menu,
   Scale,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
-  UserRound,
   Users,
   X
 } from "lucide-react";
@@ -28,6 +28,7 @@ const navigation = [
   { to: "/", label: "Advisor overview", icon: LayoutDashboard, end: true },
   { to: `/households/${demoHouseholdId}`, label: "Household twin", icon: Users, end: true },
   { to: `/households/${demoHouseholdId}/compare`, label: "Decision lab", icon: Scale },
+  { to: "/workbench", label: "Advisor workbench", icon: SlidersHorizontal, end: true },
   { to: `/households/${demoHouseholdId}/audit`, label: "Evidence & audit", icon: ShieldCheck },
   { to: "/evidence", label: "Evidence library", icon: Files, system: true },
   { to: "/connectors", label: "Data connectors", icon: Activity, system: true }
@@ -306,15 +307,6 @@ export function AppShell() {
                       <dd>None · demonstration only</dd>
                     </div>
                   </dl>
-                  <Link
-                    className="profile-link"
-                    to={`/households/${demoHouseholdId}/audit`}
-                    onClick={() => setOpenMenu(null)}
-                  >
-                    <UserRound size={16} />
-                    View advisor audit activity
-                    <ChevronRight size={15} />
-                  </Link>
                 </section>
               ) : null}
             </div>

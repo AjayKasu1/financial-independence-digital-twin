@@ -134,6 +134,19 @@ export const scenarioComparisonRequestSchema = z
 
 export type ScenarioComparisonRequest = z.infer<typeof scenarioComparisonRequestSchema>;
 
+export const workbenchRequestSchema = z.object({
+  rsuVestAmount: z.number().finite().positive().max(10_000_000),
+  employerStockPercent: rate.max(0.9),
+  liquidityFloor: z.number().finite().min(0).max(10_000_000),
+  targetFiAge: z.number().int().min(40).max(80),
+  maxRealEstateHoursPerMonth: z.number().finite().min(0).max(80),
+  rentalPurchasePrice: z.number().finite().positive().max(20_000_000),
+  monthlyMarketRent: z.number().finite().min(0).max(100_000),
+  mortgageRate: z.number().finite().min(0).max(0.25)
+});
+
+export type WorkbenchRequest = z.infer<typeof workbenchRequestSchema>;
+
 export const statementLabelSchema = z.enum([
   "CLIENT_FACT",
   "DETERMINISTIC_CALCULATION",
@@ -241,6 +254,18 @@ export interface ScenarioComparisonResponse {
   readonly triggerEventId?: string;
   readonly createdAt: string;
   readonly decisionCapital: number;
+  readonly clientConstitution: DomainClientConstitution;
+  readonly analysis: DomainDecisionAnalysis | null;
+  readonly scenarios: readonly DomainScenarioResult[];
+  readonly conflicts: readonly DomainConflictFlag[];
+}
+
+export interface WorkbenchResponse {
+  readonly sandboxId: string;
+  readonly mode: "SESSION_ONLY";
+  readonly householdId: string;
+  readonly calculatedAt: string;
+  readonly input: WorkbenchRequest;
   readonly clientConstitution: DomainClientConstitution;
   readonly analysis: DomainDecisionAnalysis | null;
   readonly scenarios: readonly DomainScenarioResult[];

@@ -8,7 +8,8 @@ import {
   passportMonitorRequestSchema,
   recommendationRequestSchema,
   reviewRequestSchema,
-  scenarioComparisonRequestSchema
+  scenarioComparisonRequestSchema,
+  workbenchRequestSchema
 } from "@fidt/contracts";
 import {
   createDeterministicRecommendation,
@@ -43,6 +44,7 @@ import { approvalBlockReason, verifyAuditChain } from "./governance";
 import { authenticate, rateLimit, requestContext, securityHeaders } from "./middleware";
 import { DatabaseRepository } from "./repositories/database";
 import type { Bindings, Variables } from "./types";
+import { runAdvisorWorkbench } from "./workbench";
 
 export const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -125,6 +127,14 @@ app.get("/api/households/:householdId", async (context) => {
     repository.getLatestScenarios(householdId)
   ]);
   return context.json({ household, clientConstitution, events, latestScenarios });
+});
+
+app.post("/api/households/:householdId/workbench", async (context) => {
+  const repository = await repositoryFor(context.env);
+  const household = await requireHousehold(repository, context.req.param("householdId"));
+  const clientConstitution = await repository.getCurrentConstitution(household.id);
+  const input = workbenchRequestSchema.parse(await context.req.json());
+  return context.json(runAdvisorWorkbench(household, clientConstitution, input));
 });
 
 app.post("/api/households/:householdId/scenarios", async (context) => {

@@ -10,6 +10,7 @@ This is a production-shaped demonstration, not financial advice. The included Pa
 - Rental, portfolio, debt-paydown, fee, conflict, and FI outcomes use the same versioned assumptions.
 - One shared decision-capital constraint is enforced across every alternative; infeasible strategies cannot be recommended or approved.
 - The Decision Lab calculates deterministic mortgage/rent crossover boundaries, capital feasibility, and a 3 × 3 sensitivity surface.
+- The Advisor Workbench provides a session-only, non-destructive what-if space that reuses the same deterministic engines without creating an audit record; selected economics can then be promoted into governed review.
 - A versioned Client Constitution turns liquidity, concentration, workload, FI-age, and modeled-success preferences into executable controls.
 - A recommendation statement is labeled as client fact, calculation, external fact, assumption, advisor judgment, or AI suggestion.
 - Public data has a source URL, observation date, retrieval date, and staleness state.
@@ -29,7 +30,9 @@ flowchart LR
   X["Decision event"] --> B
   L["Treasury · BLS · FHFA · SEC"] --> B
   B --> C["Deterministic decision engines"]
+  W["Advisor Workbench<br/>session-only"] --> C
   C --> D["Scenario comparison"]
+  W -. "Promote selected economics" .-> D
   D --> E["AI explanation or deterministic fallback"]
   E --> F["Fiduciary policy gate"]
   F -->|"Requires changes"| R["Governed repair"]
@@ -145,7 +148,7 @@ Keep the API contracts and deterministic packages unchanged. See [`docs/architec
 
 ## Current boundaries
 
-Included: synthetic household planning, shared-capital enforcement, executable client constraints, deterministic counterfactual boundaries, FI projection, rental underwriting, seeded portfolio simulations, debt comparison, fee conflicts, live public observations, governed recommendations, human review, signed Decision Passports, scheduled validity monitoring, automatic invalidation, and audit lineage.
+Included: synthetic household planning, a session-only Advisor Workbench, governed scenario promotion, shared-capital enforcement, executable client constraints, deterministic counterfactual boundaries, FI projection, rental underwriting, seeded portfolio simulations, debt comparison, fee conflicts, live public observations, governed recommendations, human review, signed Decision Passports, scheduled validity monitoring, automatic invalidation, and audit lineage.
 
 Not included: brokerage connectivity, trading, individualized tax/legal advice, document OCR, multi-tenant billing, custodian write access, or production RIA books and records certification.
 

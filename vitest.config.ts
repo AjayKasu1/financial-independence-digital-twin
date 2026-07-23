@@ -2,6 +2,9 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
+    // Coverage instrumentation makes the seeded Monte Carlo and sensitivity tests slower
+    // than ordinary unit tests on low-core CI runners.
+    testTimeout: 15_000,
     coverage: {
       provider: "v8",
       reporter: ["text", "json-summary", "html"],

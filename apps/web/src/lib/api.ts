@@ -8,7 +8,9 @@ import type {
   RecommendationResponse,
   ReviewResponse,
   ScenarioComparisonRequest,
-  ScenarioComparisonResponse
+  ScenarioComparisonResponse,
+  WorkbenchRequest,
+  WorkbenchResponse
 } from "@fidt/contracts";
 
 export class ApiError extends Error {
@@ -50,6 +52,11 @@ export const api = {
       `/api/households/${encodeURIComponent(householdId)}/scenarios`,
       { method: "POST", body: JSON.stringify(input) }
     ),
+  workbench: (householdId: string, input: WorkbenchRequest) =>
+    request<WorkbenchResponse>(`/api/households/${encodeURIComponent(householdId)}/workbench`, {
+      method: "POST",
+      body: JSON.stringify(input)
+    }),
   recommend: (householdId: string, input: RecommendationRequest) =>
     request<RecommendationResponse>(
       `/api/households/${encodeURIComponent(householdId)}/recommendations`,

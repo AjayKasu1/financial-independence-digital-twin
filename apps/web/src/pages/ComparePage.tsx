@@ -26,27 +26,35 @@ export function ComparePage() {
   const { householdId = "" } = useParams();
   const [search] = useSearchParams();
   const triggerEventId = search.get("event") ?? "";
+  const preset = decisionPreset(triggerEventId, search);
+  const promotedFromWorkbench = search.get("source") === "workbench";
   return (
     <CompareWorkflow
-      key={`${householdId}:${triggerEventId}`}
+      key={`${householdId}:${search.toString()}`}
       householdId={householdId}
       triggerEventId={triggerEventId}
+      preset={preset}
+      promotedFromWorkbench={promotedFromWorkbench}
     />
   );
 }
 
 function CompareWorkflow({
   householdId,
-  triggerEventId
+  triggerEventId,
+  preset,
+  promotedFromWorkbench
 }: {
   householdId: string;
   triggerEventId: string;
+  preset: DecisionPreset;
+  promotedFromWorkbench: boolean;
 }) {
-  const preset = decisionPreset(triggerEventId);
   const [capital, setCapital] = useState(preset.capital);
   const [purchasePrice, setPurchasePrice] = useState(preset.purchasePrice);
   const [rent, setRent] = useState(preset.rent);
   const [mortgageRate, setMortgageRate] = useState(preset.mortgageRate);
+  const [propertyHours, setPropertyHours] = useState(preset.propertyHours);
   const [triggerEvent, setTriggerEvent] = useState<FinancialEvent | null>(null);
   const [constitution, setConstitution] = useState<ClientConstitution | null>(null);
   const [result, setResult] = useState<ScenarioComparisonResponse | null>(null);
@@ -81,7 +89,7 @@ function CompareWorkflow({
             appreciationRate: 0.03,
             rentGrowthRate: 0.025,
             sellingCostPercent: 0.06,
-            hoursPerMonth: 6,
+            hoursPerMonth: propertyHours,
             hourlyTimeValue: 90
           }
         },
@@ -102,7 +110,7 @@ function CompareWorkflow({
         }
       ]
     }),
-    [capital, purchasePrice, rent, mortgageRate, triggerEventId]
+    [capital, purchasePrice, rent, mortgageRate, propertyHours, triggerEventId]
   );
   const run = () => {
     setLoading(true);
@@ -146,6 +154,19 @@ function CompareWorkflow({
           <Badge tone={triggerEvent.severity === "HIGH" ? "danger" : "warn"}>
             {triggerEvent.severity}
           </Badge>
+        </section>
+      ) : promotedFromWorkbench ? (
+        <section className="decision-trigger workbench-promotion" aria-label="Workbench promotion">
+          <span className="timeline-dot severity-low" />
+          <div>
+            <span className="eyebrow">Promoted from Advisor Workbench</span>
+            <strong>Session assumptions ready for governed review</strong>
+            <p>
+              No record exists yet. Running this comparison restores the signed Client Constitution
+              and creates a versioned audit event.
+            </p>
+          </div>
+          <Badge tone="info">Unsaved</Badge>
         </section>
       ) : null}
       <section className="compare-layout">
@@ -195,6 +216,14 @@ function CompareWorkflow({
             value={mortgageRate}
             onChange={setMortgageRate}
             step={0.05}
+          />
+          <Input
+            label="Property workload"
+            hint="Rental only"
+            suffix="hr/mo"
+            value={propertyHours}
+            onChange={setPropertyHours}
+            step={1}
           />
           {constitution ? <ConstitutionCard constitution={constitution} /> : null}
           <div className="assumption-note">
@@ -388,19 +417,61 @@ function ScenarioResults({
   );
 }
 
-function decisionPreset(eventId: string): {
+interface DecisionPreset {
   capital: number;
   purchasePrice: number;
   rent: number;
   mortgageRate: number;
-} {
+  propertyHours: number;
+}
+
+function decisionPreset(eventId: string, search: URLSearchParams): DecisionPreset {
+  const fromWorkbench = search.get("source") === "workbench";
+  if (fromWorkbench) {
+    return {
+      capital: queryNumber(search, "capital", 71_000, 1, 100_000_000),
+      purchasePrice: queryNumber(search, "price", 525_000, 1, 20_000_000),
+      rent: queryNumber(search, "rent", 3_650, 0, 100_000),
+      mortgageRate: queryNumber(search, "rate", 6.75, 0, 25),
+      propertyHours: queryNumber(search, "hours", 6, 0, 80)
+    };
+  }
   if (eventId === "event-rsu-vest") {
-    return { capital: 71_000, purchasePrice: 525_000, rent: 3_650, mortgageRate: 6.75 };
+    return {
+      capital: 71_000,
+      purchasePrice: 525_000,
+      rent: 3_650,
+      mortgageRate: 6.75,
+      propertyHours: 6
+    };
   }
   if (eventId === "event-concentration") {
-    return { capital: 292_000, purchasePrice: 625_000, rent: 4_100, mortgageRate: 6.75 };
+    return {
+      capital: 292_000,
+      purchasePrice: 625_000,
+      rent: 4_100,
+      mortgageRate: 6.75,
+      propertyHours: 6
+    };
   }
-  return { capital: 147_000, purchasePrice: 525_000, rent: 3_650, mortgageRate: 6.75 };
+  return {
+    capital: 147_000,
+    purchasePrice: 525_000,
+    rent: 3_650,
+    mortgageRate: 6.75,
+    propertyHours: 6
+  };
+}
+
+function queryNumber(
+  search: URLSearchParams,
+  key: string,
+  fallback: number,
+  minimum: number,
+  maximum: number
+): number {
+  const value = Number(search.get(key));
+  return Number.isFinite(value) && value >= minimum && value <= maximum ? value : fallback;
 }
 
 function Input({
