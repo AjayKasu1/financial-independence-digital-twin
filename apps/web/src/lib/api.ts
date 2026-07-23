@@ -15,6 +15,8 @@ import type {
   ReviewResponse,
   ScenarioComparisonRequest,
   ScenarioComparisonResponse,
+  StrategyCompilation,
+  StrategyCompilationRequest,
   WorkbenchRequest,
   WorkbenchResponse
 } from "@fidt/contracts";
@@ -54,6 +56,13 @@ export const api = {
     request<OpportunityRadarResponse>(
       `/api/households/${encodeURIComponent(householdId)}/opportunities`
     ),
+  compileStrategies: (householdId: string, input: StrategyCompilationRequest) =>
+    request<StrategyCompilation>(
+      `/api/households/${encodeURIComponent(householdId)}/strategy-compilations`,
+      { method: "POST", body: JSON.stringify(input) }
+    ),
+  strategyCompilation: (compilationId: string) =>
+    request<StrategyCompilation>(`/api/strategy-compilations/${encodeURIComponent(compilationId)}`),
   household: (householdId: string) =>
     request<HouseholdResponse>(`/api/households/${encodeURIComponent(householdId)}`),
   liveData: (refresh = false) =>

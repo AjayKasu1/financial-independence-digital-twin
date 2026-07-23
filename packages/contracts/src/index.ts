@@ -7,7 +7,8 @@ import type {
   HouseholdResilienceAssessment as DomainHouseholdResilienceAssessment,
   HouseholdResilienceComparison as DomainHouseholdResilienceComparison,
   HouseholdSnapshot as DomainHouseholdSnapshot,
-  ScenarioResult as DomainScenarioResult
+  ScenarioResult as DomainScenarioResult,
+  StrategyRequest as DomainStrategyRequest
 } from "@fidt/domain";
 
 export type {
@@ -88,12 +89,46 @@ export const mixedStrategySchema = z
     }
   });
 
+export const rsuActionStrategySchema = z
+  .object({
+    planType: z.enum([
+      "SELL_AND_DIVERSIFY",
+      "STAGED_DIVERSIFICATION",
+      "DEBT_AND_DIVERSIFY",
+      "LIQUIDITY_AND_DIVERSIFY",
+      "RETAIN_AND_MONITOR"
+    ]),
+    grossVestValue: z.number().finite().positive().max(100_000_000),
+    withholdingRate: rate,
+    portfolioAmount: nonNegative,
+    debtPaydownAmount: nonNegative,
+    cashReserveAmount: nonNegative,
+    retainedEmployerStockAmount: nonNegative,
+    diversificationMonths: z.number().int().min(0).max(36),
+    concentrationRiskHaircut: rate.max(0.25)
+  })
+  .superRefine((value, context) => {
+    const netVestValue = value.grossVestValue * (1 - value.withholdingRate);
+    const allocated =
+      value.portfolioAmount +
+      value.debtPaydownAmount +
+      value.cashReserveAmount +
+      value.retainedEmployerStockAmount;
+    if (Math.abs(allocated - netVestValue) > 0.02) {
+      context.addIssue({
+        code: "custom",
+        message: "RSU allocations must equal modeled after-withholding proceeds"
+      });
+    }
+  });
+
 export const strategyRequestSchema = z.object({
-  type: z.enum(["RENTAL", "PORTFOLIO", "DEBT_PAYDOWN", "MIXED"]),
+  type: z.enum(["RENTAL", "PORTFOLIO", "DEBT_PAYDOWN", "MIXED", "RSU_ACTION"]),
   rental: rentalStrategySchema.optional(),
   portfolio: portfolioStrategySchema.optional(),
   debt: debtStrategySchema.optional(),
-  mixed: mixedStrategySchema.optional()
+  mixed: mixedStrategySchema.optional(),
+  rsuAction: rsuActionStrategySchema.optional()
 });
 
 export const resilienceShockSchema = z.object({
@@ -112,6 +147,7 @@ export const scenarioComparisonRequestSchema = z
     resilienceShock: resilienceShockSchema.optional(),
     strategies: z.array(strategyRequestSchema).min(2).max(4),
     triggerEventId: z.string().min(1).optional(),
+    compilationId: z.string().min(1).optional(),
     assumptions: z
       .object({
         inflationRate: z.number().finite().min(-0.05).max(0.2),
@@ -145,6 +181,20 @@ export const scenarioComparisonRequestSchema = z
         path: ["strategies"],
         message: "Debt paydown cannot exceed shared decision capital"
       });
+    }
+    for (const strategy of value.strategies.filter(
+      (candidate) => candidate.type === "RSU_ACTION"
+    )) {
+      if (!strategy.rsuAction) continue;
+      const netVestValue =
+        strategy.rsuAction.grossVestValue * (1 - strategy.rsuAction.withholdingRate);
+      if (Math.abs(netVestValue - value.decisionCapital) > 0.02) {
+        context.addIssue({
+          code: "custom",
+          path: ["strategies"],
+          message: "RSU modeled proceeds must equal shared decision capital"
+        });
+      }
     }
   });
 
@@ -277,6 +327,7 @@ export interface ScenarioComparisonResponse {
   readonly runId: string;
   readonly householdId: string;
   readonly triggerEventId?: string;
+  readonly compilationId?: string;
   readonly createdAt: string;
   readonly decisionCapital: number;
   readonly clientConstitution: DomainClientConstitution;
@@ -632,6 +683,83 @@ export interface OpportunityRadarResponse {
     readonly passportsAtRisk: number;
   };
   readonly opportunities: readonly AdvisorOpportunity[];
+}
+
+export const strategyCompilationRequestSchema = z.object({
+  opportunityId: z.string().min(1)
+});
+
+export type StrategyCompilationRequest = z.infer<typeof strategyCompilationRequestSchema>;
+
+export interface StrategyConstitutionCheck {
+  readonly id: string;
+  readonly label: string;
+  readonly actual: number;
+  readonly operator: "LTE" | "GTE";
+  readonly threshold: number;
+  readonly unit: "CURRENCY" | "RATE" | "NUMBER";
+  readonly passed: boolean;
+  readonly blocking: boolean;
+}
+
+export interface CompiledStrategyCandidate {
+  readonly id: string;
+  readonly planType:
+    | "SELL_AND_DIVERSIFY"
+    | "STAGED_DIVERSIFICATION"
+    | "DEBT_AND_DIVERSIFY"
+    | "LIQUIDITY_AND_DIVERSIFY"
+    | "RETAIN_AND_MONITOR";
+  readonly label: string;
+  readonly thesis: string;
+  readonly status: "ELIGIBLE" | "REJECTED";
+  readonly dominance: "PARETO_FRONTIER" | "DOMINATED" | "REJECTED";
+  readonly strategy: DomainStrategyRequest;
+  readonly scenario: DomainScenarioResult;
+  readonly allocations: {
+    readonly portfolio: number;
+    readonly debtPaydown: number;
+    readonly cashReserve: number;
+    readonly retainedEmployerStock: number;
+  };
+  readonly constitutionChecks: readonly StrategyConstitutionCheck[];
+  readonly evidenceRequirements: readonly {
+    readonly label: string;
+    readonly status: "CONFIRMED" | "MISSING";
+  }[];
+  readonly tradeoffs: readonly string[];
+  readonly advisorEconomics: {
+    readonly annualRevenueDifference: number;
+    readonly direction: "INCREASE" | "DECREASE" | "NEUTRAL";
+    readonly disclosureRequired: boolean;
+  };
+}
+
+export interface StrategyCompilation {
+  readonly id: string;
+  readonly householdId: string;
+  readonly opportunityId: string;
+  readonly triggerEventId: string | null;
+  readonly compilerVersion: "strategy-compiler-v1";
+  readonly compiledAt: string;
+  readonly opportunity: {
+    readonly title: string;
+    readonly category: OpportunityCategory;
+    readonly score: number;
+    readonly evidenceReadiness: EvidenceReadiness;
+  };
+  readonly grossDecisionValue: number;
+  readonly decisionCapital: number;
+  readonly modeledWithholdingRate: number;
+  readonly candidates: readonly CompiledStrategyCandidate[];
+  readonly frontierCandidateIds: readonly string[];
+  readonly rejectedCandidateIds: readonly string[];
+  readonly promotion: {
+    readonly decisionCapital: number;
+    readonly triggerEventId: string | null;
+    readonly strategies: readonly DomainStrategyRequest[];
+  };
+  readonly methodology: string;
 }
 
 export const recommendationRequestSchema = z.object({

@@ -8,7 +8,8 @@ import type {
   ExtractedEvidenceFact,
   PassportValidityCheck,
   RecommendationDraft,
-  ScenarioComparisonResponse
+  ScenarioComparisonResponse,
+  StrategyCompilation
 } from "@fidt/contracts";
 import {
   demoClientConstitution,
@@ -38,6 +39,7 @@ interface ScenarioRunRow {
   readonly id: string;
   readonly household_id: string;
   readonly trigger_event_id: string | null;
+  readonly compilation_id: string | null;
   readonly created_at: string;
   readonly scenarios_json: string;
   readonly conflicts_json: string;
@@ -132,6 +134,10 @@ interface EvidenceFactRow {
   readonly confidence: number;
   readonly status: ExtractedEvidenceFact["status"];
   readonly affects_json: string;
+}
+
+interface StrategyCompilationRow {
+  readonly compilation_json: string;
 }
 
 export class DatabaseRepository {
@@ -410,15 +416,41 @@ export class DatabaseRepository {
     return row?.status ?? null;
   }
 
+  async saveStrategyCompilation(compilation: StrategyCompilation): Promise<void> {
+    await this.#db
+      .prepare(
+        "INSERT INTO strategy_compilations (id, household_id, opportunity_id, trigger_event_id, compiler_version, compiled_at, compilation_json) VALUES (?, ?, ?, ?, ?, ?, ?)"
+      )
+      .bind(
+        compilation.id,
+        compilation.householdId,
+        compilation.opportunityId,
+        compilation.triggerEventId,
+        compilation.compilerVersion,
+        compilation.compiledAt,
+        JSON.stringify(compilation)
+      )
+      .run();
+  }
+
+  async getStrategyCompilation(id: string): Promise<StrategyCompilation | null> {
+    const row = await this.#db
+      .prepare("SELECT compilation_json FROM strategy_compilations WHERE id = ?")
+      .bind(id)
+      .first<StrategyCompilationRow>();
+    return row ? parseJson<StrategyCompilation>(row.compilation_json) : null;
+  }
+
   async saveScenarioRun(run: ScenarioComparisonResponse): Promise<void> {
     await this.#db
       .prepare(
-        "INSERT INTO scenario_runs (id, household_id, trigger_event_id, created_at, assumptions_json, scenarios_json, conflicts_json, decision_capital_cents, constitution_json, analysis_json, resilience_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO scenario_runs (id, household_id, trigger_event_id, compilation_id, created_at, assumptions_json, scenarios_json, conflicts_json, decision_capital_cents, constitution_json, analysis_json, resilience_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
       )
       .bind(
         run.runId,
         run.householdId,
         run.triggerEventId ?? null,
+        run.compilationId ?? null,
         run.createdAt,
         JSON.stringify(run.scenarios[0]?.assumptions ?? {}),
         JSON.stringify(run.scenarios),
@@ -434,7 +466,7 @@ export class DatabaseRepository {
   async getScenarioRun(id: string): Promise<ScenarioComparisonResponse | null> {
     const row = await this.#db
       .prepare(
-        "SELECT id, household_id, trigger_event_id, created_at, scenarios_json, conflicts_json, decision_capital_cents, constitution_json, analysis_json, resilience_json FROM scenario_runs WHERE id = ?"
+        "SELECT id, household_id, trigger_event_id, compilation_id, created_at, scenarios_json, conflicts_json, decision_capital_cents, constitution_json, analysis_json, resilience_json FROM scenario_runs WHERE id = ?"
       )
       .bind(id)
       .first<ScenarioRunRow>();
@@ -443,6 +475,7 @@ export class DatabaseRepository {
       runId: row.id,
       householdId: row.household_id,
       ...(row.trigger_event_id ? { triggerEventId: row.trigger_event_id } : {}),
+      ...(row.compilation_id ? { compilationId: row.compilation_id } : {}),
       createdAt: row.created_at,
       decisionCapital:
         row.decision_capital_cents === null

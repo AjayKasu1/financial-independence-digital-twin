@@ -287,7 +287,7 @@ export interface AssumptionSet {
   readonly seed: number;
 }
 
-export type StrategyType = "RENTAL" | "PORTFOLIO" | "DEBT_PAYDOWN" | "MIXED";
+export type StrategyType = "RENTAL" | "PORTFOLIO" | "DEBT_PAYDOWN" | "MIXED" | "RSU_ACTION";
 
 export interface RentalStrategyInput {
   readonly purchasePrice: number;
@@ -329,12 +329,32 @@ export interface MixedStrategyInput {
   readonly debtAllocation: number;
 }
 
+export type RsuActionPlanType =
+  | "SELL_AND_DIVERSIFY"
+  | "STAGED_DIVERSIFICATION"
+  | "DEBT_AND_DIVERSIFY"
+  | "LIQUIDITY_AND_DIVERSIFY"
+  | "RETAIN_AND_MONITOR";
+
+export interface RsuActionStrategyInput {
+  readonly planType: RsuActionPlanType;
+  readonly grossVestValue: number;
+  readonly withholdingRate: number;
+  readonly portfolioAmount: number;
+  readonly debtPaydownAmount: number;
+  readonly cashReserveAmount: number;
+  readonly retainedEmployerStockAmount: number;
+  readonly diversificationMonths: number;
+  readonly concentrationRiskHaircut: number;
+}
+
 export interface StrategyRequest {
   readonly type: StrategyType;
   readonly rental?: RentalStrategyInput;
   readonly portfolio?: PortfolioStrategyInput;
   readonly debt?: DebtPaydownStrategyInput;
   readonly mixed?: MixedStrategyInput;
+  readonly rsuAction?: RsuActionStrategyInput;
 }
 
 export interface YearProjection {

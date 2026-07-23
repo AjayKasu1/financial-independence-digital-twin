@@ -8,6 +8,7 @@ import {
   type EvidenceDocumentsResponse,
   type OpportunityRadarResponse,
   type ScenarioComparisonResponse,
+  type StrategyCompilation,
   type ValidityMetric,
   evidenceDocumentIngestRequestSchema,
   evidenceDocumentReviewRequestSchema,
@@ -15,6 +16,7 @@ import {
   recommendationRequestSchema,
   reviewRequestSchema,
   scenarioComparisonRequestSchema,
+  strategyCompilationRequestSchema,
   workbenchRequestSchema
 } from "@fidt/contracts";
 import {
@@ -62,6 +64,7 @@ import { authenticate, rateLimit, requestContext, securityHeaders } from "./midd
 import { DatabaseRepository } from "./repositories/database";
 import type { Bindings, Variables } from "./types";
 import { runAdvisorWorkbench } from "./workbench";
+import { compileRsuStrategies } from "./strategy-compiler";
 
 export const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -255,6 +258,66 @@ app.get("/api/households/:householdId/evidence-documents", async (context) => {
   return context.json(response);
 });
 
+app.post("/api/households/:householdId/strategy-compilations", async (context) => {
+  const repository = await repositoryFor(context.env);
+  const household = await requireHousehold(repository, context.req.param("householdId"));
+  const input = strategyCompilationRequestSchema.parse(await context.req.json());
+  const [constitution, events, documents, latestPassportStatus] = await Promise.all([
+    repository.getCurrentConstitution(household.id),
+    repository.listEvents(household.id),
+    repository.listEvidenceDocuments(household.id),
+    repository.getLatestPassportStatus(household.id)
+  ]);
+  const radar = buildOpportunityRadar({
+    household,
+    constitution,
+    events,
+    documents,
+    latestPassportStatus
+  });
+  const opportunity = radar.opportunities.find((candidate) => candidate.id === input.opportunityId);
+  if (!opportunity) throw new HttpError(404, "Opportunity not found");
+  let compilation: StrategyCompilation;
+  try {
+    compilation = compileRsuStrategies({
+      household,
+      constitution,
+      opportunity,
+      documents
+    });
+  } catch (error) {
+    if (error instanceof RangeError) throw new HttpError(409, error.message);
+    throw error;
+  }
+  await repository.saveStrategyCompilation(compilation);
+  await repository.appendAudit({
+    householdId: household.id,
+    actorType: "SYSTEM",
+    actorId: compilation.compilerVersion,
+    action: "STRATEGY_SET_COMPILED",
+    entityType: "strategy_compilation",
+    entityId: compilation.id,
+    metadata: {
+      opportunityId: compilation.opportunityId,
+      triggerEventId: compilation.triggerEventId,
+      compilerVersion: compilation.compilerVersion,
+      decisionCapital: compilation.decisionCapital,
+      candidateIds: compilation.candidates.map((candidate) => candidate.id),
+      frontierCandidateIds: compilation.frontierCandidateIds,
+      rejectedCandidateIds: compilation.rejectedCandidateIds,
+      evidenceReadiness: compilation.opportunity.evidenceReadiness
+    }
+  });
+  return context.json(compilation, 201);
+});
+
+app.get("/api/strategy-compilations/:compilationId", async (context) => {
+  const repository = await repositoryFor(context.env);
+  const compilation = await repository.getStrategyCompilation(context.req.param("compilationId"));
+  if (!compilation) throw new HttpError(404, "Strategy compilation not found");
+  return context.json(compilation);
+});
+
 app.post("/api/households/:householdId/evidence-documents", async (context) => {
   const repository = await repositoryFor(context.env);
   const household = await requireHousehold(repository, context.req.param("householdId"));
@@ -373,6 +436,21 @@ app.post("/api/households/:householdId/scenarios", async (context) => {
   const repository = await repositoryFor(context.env);
   const household = await requireHousehold(repository, context.req.param("householdId"));
   const request = scenarioComparisonRequestSchema.parse(await context.req.json());
+  const compilation = request.compilationId
+    ? await repository.getStrategyCompilation(request.compilationId)
+    : null;
+  if (request.compilationId) {
+    if (!compilation || compilation.householdId !== household.id) {
+      throw new HttpError(404, "Strategy compilation not found");
+    }
+    if (
+      Math.abs(compilation.promotion.decisionCapital - request.decisionCapital) > 0.02 ||
+      JSON.stringify(compilation.promotion.strategies) !== JSON.stringify(request.strategies) ||
+      (compilation.promotion.triggerEventId ?? undefined) !== request.triggerEventId
+    ) {
+      throw new HttpError(422, "Scenario inputs do not match the locked strategy compilation");
+    }
+  }
   if (request.triggerEventId) {
     const triggerEvent = (await repository.listEvents(household.id)).find(
       (event) => event.id === request.triggerEventId
@@ -456,6 +534,7 @@ app.post("/api/households/:householdId/scenarios", async (context) => {
     runId: crypto.randomUUID(),
     householdId: household.id,
     ...(request.triggerEventId ? { triggerEventId: request.triggerEventId } : {}),
+    ...(request.compilationId ? { compilationId: request.compilationId } : {}),
     createdAt: new Date().toISOString(),
     decisionCapital: request.decisionCapital,
     clientConstitution,
@@ -482,9 +561,28 @@ app.post("/api/households/:householdId/scenarios", async (context) => {
       resilienceScore: resilience?.stressed.score ?? null,
       resilienceBand: resilience?.stressed.band ?? null,
       resilienceBreaches: resilience?.stressed.breaches.map((breach) => breach.code) ?? [],
-      triggerEventId: request.triggerEventId ?? null
+      triggerEventId: request.triggerEventId ?? null,
+      compilationId: request.compilationId ?? null
     }
   });
+  if (compilation) {
+    await repository.appendAudit({
+      householdId: household.id,
+      actorType: "USER",
+      actorId: context.get("advisor").id,
+      action: "STRATEGY_COMPILATION_PROMOTED",
+      entityType: "strategy_compilation",
+      entityId: compilation.id,
+      metadata: {
+        scenarioRunId: run.runId,
+        opportunityId: compilation.opportunityId,
+        compilerVersion: compilation.compilerVersion,
+        candidateIds: compilation.promotion.strategies.map(
+          (strategy) => strategy.rsuAction?.planType ?? strategy.type
+        )
+      }
+    });
+  }
   return context.json(run, 201);
 });
 

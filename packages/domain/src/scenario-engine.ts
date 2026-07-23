@@ -6,6 +6,7 @@ import type {
   FeeSchedule,
   HouseholdSnapshot,
   RentalStrategyInput,
+  RsuActionStrategyInput,
   ScenarioResult,
   ScenarioRisk,
   StrategyRequest
@@ -124,7 +125,10 @@ export function runScenario(
   }
 
   return {
-    id: `scenario-${request.type.toLowerCase()}-v${assumptions.version}`,
+    id:
+      request.type === "RSU_ACTION" && request.rsuAction
+        ? `scenario-rsu-${request.rsuAction.planType.toLowerCase().replaceAll("_", "-")}-v${assumptions.version}`
+        : `scenario-${request.type.toLowerCase()}-v${assumptions.version}`,
     strategy: request.type,
     label: effects.label,
     fiNumber: fiProjection.fiNumber,
@@ -235,6 +239,11 @@ function calculateStrategyEffects(
     };
   }
 
+  if (request.type === "RSU_ACTION") {
+    if (!request.rsuAction) throw new RangeError("RSU action inputs are required");
+    return rsuActionEffects(household, request.rsuAction, assumptions, base, decisionContext);
+  }
+
   if (!request.mixed || !request.rental || !request.portfolio || !request.debt) {
     throw new RangeError("Mixed strategy requires mixed, rental, portfolio, and debt inputs");
   }
@@ -290,6 +299,145 @@ function calculateStrategyEffects(
       rentalIrr: rental.leveredIrr
     }
   };
+}
+
+function rsuActionEffects(
+  household: HouseholdSnapshot,
+  input: RsuActionStrategyInput,
+  assumptions: AssumptionSet,
+  base: StrategyEffects,
+  decisionContext?: DecisionContext
+): StrategyEffects {
+  const netVestValue = toMoney(input.grossVestValue * (1 - input.withholdingRate));
+  const allocated =
+    input.portfolioAmount +
+    input.debtPaydownAmount +
+    input.cashReserveAmount +
+    input.retainedEmployerStockAmount;
+  if (Math.abs(allocated - netVestValue) > 0.02) {
+    throw new RangeError("RSU action allocations must equal modeled after-withholding proceeds");
+  }
+  const available = decisionContext?.decisionCapital ?? netVestValue;
+  if (Math.abs(available - netVestValue) > 0.02) {
+    throw new RangeError("RSU modeled proceeds must equal the shared decision capital");
+  }
+  const liability = household.liabilities.find((item) => item.type === "STUDENT_LOAN");
+  const debtPaydown = Math.min(input.debtPaydownAmount, liability?.balance ?? 0, available);
+  const liquidBefore = liquidAssetsFor(household);
+  const liquidAfter = liquidBefore + netVestValue - debtPaydown;
+  const holdingsBefore = household.holdings.reduce((sum, holding) => sum + holding.marketValue, 0);
+  const employerStockBefore = household.holdings
+    .filter((holding) => holding.assetClass === "EMPLOYER_STOCK")
+    .reduce((sum, holding) => sum + holding.marketValue, 0);
+  const retainedRatio = netVestValue === 0 ? 0 : input.retainedEmployerStockAmount / netVestValue;
+  const retainedGrossExposure = input.grossVestValue * retainedRatio;
+  const projectedHoldings = holdingsBefore + input.grossVestValue;
+  const projectedEmployerStockPercent =
+    projectedHoldings === 0 ? 0 : (employerStockBefore + retainedGrossExposure) / projectedHoldings;
+  const concentrationLimit =
+    decisionContext?.constitution.constraints.maxEmployerStockPercent ?? 0.25;
+  const minimumLiquidity =
+    decisionContext?.constitution.constraints.liquidityFloor ??
+    household.preferences.liquidityFloor;
+  const risks = [...base.risks];
+  if (projectedEmployerStockPercent > concentrationLimit) {
+    risks.push({
+      code: "RSU_CONCENTRATION_LIMIT",
+      severity: "HIGH",
+      message: `Post-vest employer-stock exposure is ${round(projectedEmployerStockPercent * 100, 1)}%, above the constitution maximum of ${round(concentrationLimit * 100, 1)}%.`
+    });
+  }
+  if (liquidAfter < minimumLiquidity) {
+    risks.push({
+      code: "RSU_LIQUIDITY_FLOOR",
+      severity: "HIGH",
+      message: "The RSU deployment would reduce liquid assets below the constitution floor."
+    });
+  }
+  if (input.diversificationMonths > 0) {
+    risks.push({
+      code: "RSU_EXECUTION_WINDOW",
+      severity: input.diversificationMonths > 6 ? "HIGH" : "MEDIUM",
+      message: `Employer-stock exposure remains during a ${input.diversificationMonths}-month staged execution window.`
+    });
+  }
+  const diversifiedReturn =
+    assumptions.equityReturnMean * 0.75 +
+    assumptions.bondReturnMean * 0.2 +
+    assumptions.cashReturn * 0.05 -
+    assumptions.taxDrag;
+  const retainedReturn =
+    assumptions.equityReturnMean - assumptions.taxDrag - input.concentrationRiskHaircut;
+  const newAssetReturn =
+    netVestValue === 0
+      ? base.portfolioReturn
+      : (input.portfolioAmount * diversifiedReturn +
+          input.cashReserveAmount * assumptions.cashReturn +
+          input.retainedEmployerStockAmount * retainedReturn) /
+        netVestValue;
+  const investableAfterDebt = Math.max(1, liquidBefore + netVestValue - debtPaydown);
+  const portfolioReturn =
+    (liquidBefore * base.portfolioReturn + (netVestValue - debtPaydown) * newAssetReturn) /
+    investableAfterDebt;
+  const annualInterestSaved = debtPaydown * (liability?.annualRate ?? 0);
+
+  return {
+    ...base,
+    label: rsuActionLabel(input.planType),
+    startingLiquidAssets: liquidAfter,
+    startingLiabilities: base.startingLiabilities - debtPaydown,
+    annualSavings: base.annualSavings + annualInterestSaved,
+    portfolioReturn,
+    investableAssetsChange: input.portfolioAmount,
+    capitalUse: {
+      available,
+      required: netVestValue,
+      deployed: allocated,
+      residual: Math.max(0, available - allocated),
+      feasible: Math.abs(allocated - available) <= 0.02,
+      affectedInputs: [
+        "Gross RSU vest",
+        "Modeled withholding",
+        "Portfolio allocation",
+        "Debt allocation",
+        "Liquidity allocation",
+        "Retained employer stock"
+      ]
+    },
+    risks,
+    calculations: {
+      planType: input.planType,
+      grossVestValue: input.grossVestValue,
+      withholdingRate: input.withholdingRate,
+      netVestValue,
+      portfolioAmount: input.portfolioAmount,
+      debtPaydownAmount: debtPaydown,
+      cashReserveAmount: input.cashReserveAmount,
+      retainedEmployerStockAmount: input.retainedEmployerStockAmount,
+      diversificationMonths: input.diversificationMonths,
+      projectedEmployerStockPercent,
+      constitutionEmployerStockMaximum: concentrationLimit,
+      projectedLiquidAssetsAtDecision: liquidAfter,
+      constitutionLiquidityFloor: minimumLiquidity,
+      firstYearInterestSaved: annualInterestSaved,
+      concentrationRiskHaircut: input.concentrationRiskHaircut
+    }
+  };
+}
+
+function rsuActionLabel(planType: RsuActionStrategyInput["planType"]): string {
+  switch (planType) {
+    case "SELL_AND_DIVERSIFY":
+      return "Sell at vest and diversify";
+    case "STAGED_DIVERSIFICATION":
+      return "Diversify through a staged six-month plan";
+    case "DEBT_AND_DIVERSIFY":
+      return "Eliminate student debt and diversify the remainder";
+    case "LIQUIDITY_AND_DIVERSIFY":
+      return "Build liquidity and diversify";
+    case "RETAIN_AND_MONITOR":
+      return "Retain employer stock with a monitored exit trigger";
+  }
 }
 
 function householdBase(

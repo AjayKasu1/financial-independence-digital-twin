@@ -83,7 +83,8 @@ WITHHOLDING RATE: 35%`
     expect(rsu?.decisionValue?.amount).toBe(82_000);
     expect(rsu?.evidence.readiness).toBe("READY");
     expect(rsu?.action).toMatchObject({ label: "Compile strategy" });
-    expect(rsu?.action.to).toContain("event-rsu-vest");
+    expect(rsu?.action.to).toContain("/strategy-compiler");
+    expect(rsu?.action.to).toContain(`opportunity=${rsu?.id}`);
     expect(rsu?.passport.status).toBe("RETEST_REQUIRED");
   });
 });

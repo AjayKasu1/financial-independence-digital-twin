@@ -19,7 +19,9 @@ This is a production-shaped demonstration, not financial advice. The included Pa
 - Evidence-to-Twin intake content-hashes synthetic structured statements, extracts only allowlisted fields, and holds every proposed fact outside the twin until an advisor confirms it.
 - Confirmed facts supersede prior field-level evidence, update the canonical twin with document provenance, and create separate evidence-admission and twin-update events in the audit chain.
 - The Advisor Opportunity Radar continuously ranks deadlines, capital at stake, Client Constitution breaches, evidence readiness, and Decision Passport impact with deterministic, reconstructable rules.
-- A blocked opportunity links directly to the missing evidence; an evidence-ready opportunity links into the existing governed Decision Lab.
+- A blocked opportunity links directly to the missing evidence; an evidence-ready RSU opportunity enters Strategy Compiler.
+- Strategy Compiler deterministically enumerates five bounded RSU actions, tests the signed Client Constitution, calculates advisor-economics differences, rejects breaches, and identifies a Pareto frontier without using AI to generate strategies or choose a winner.
+- An advisor may focus one eligible candidate, but the server promotes the complete locked eligible bundle into Decision Lab and rejects any client-side drift from the stored compilation.
 - The policy engine blocks guarantees, broken evidence, stale cited public facts, missing alternatives, and undisclosed conflicts.
 - The API rejects approval unless the stored policy result is `APPROVE` and the advisor attests.
 - Failed drafts can be regenerated with stored compliance feedback or replaced by the governed deterministic fallback.
@@ -44,7 +46,8 @@ flowchart LR
   N["NerdWallet FRI<br/>population context only"] -. "never a score input" .-> O
   B --> RAD["Advisor Opportunity Radar<br/>deterministic priority + blockers"]
   RAD --> Q
-  RAD --> C
+  RAD --> SC["Strategy Compiler<br/>enumerate · test · reject · frontier"]
+  SC --> C
   C --> D["Scenario comparison"]
   O --> D
   W -. "Promote selected economics" .-> D
@@ -163,7 +166,7 @@ Keep the API contracts and deterministic packages unchanged. See [`docs/architec
 
 ## Current boundaries
 
-Included: synthetic household planning, allowlisted structured-document extraction, advisor-confirmed Evidence-to-Twin updates, field-level provenance, a deterministic Advisor Opportunity Radar, a session-only Advisor Workbench, deterministic household stress testing and optionality scoring, governed scenario promotion, shared-capital enforcement, executable client constraints, deterministic counterfactual boundaries, FI projection, rental underwriting, seeded portfolio simulations, debt comparison, fee conflicts, live public observations, governed recommendations, human review, signed Decision Passports, scheduled validity monitoring, automatic invalidation, and audit lineage.
+Included: synthetic household planning, allowlisted structured-document extraction, advisor-confirmed Evidence-to-Twin updates, field-level provenance, a deterministic Advisor Opportunity Radar, an RSU Strategy Compiler with constitution rejection, Pareto-frontier analysis and advisor-economics visibility, a session-only Advisor Workbench, deterministic household stress testing and optionality scoring, server-locked governed scenario promotion, shared-capital enforcement, executable client constraints, deterministic counterfactual boundaries, FI projection, rental underwriting, seeded portfolio simulations, debt comparison, fee conflicts, live public observations, governed recommendations, human review, signed Decision Passports, scheduled validity monitoring, automatic invalidation, and audit lineage.
 
 Not included: personal-document upload, binary storage, document OCR, malware scanning, brokerage connectivity, trading, individualized tax/legal advice, multi-tenant billing, custodian write access, or production RIA books and records certification.
 

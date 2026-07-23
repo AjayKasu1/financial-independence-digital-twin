@@ -7,6 +7,7 @@ import {
   CircleAlert,
   FileInput,
   Files,
+  GitBranch,
   LayoutDashboard,
   Menu,
   Radar,
@@ -29,6 +30,12 @@ const demoHouseholdId = "household-patel-demo";
 const navigation = [
   { to: "/", label: "Advisor overview", icon: LayoutDashboard, end: true },
   { to: "/opportunities", label: "Opportunity radar", icon: Radar, end: true },
+  {
+    to: `/households/${demoHouseholdId}/strategy-compiler`,
+    label: "Strategy compiler",
+    icon: GitBranch,
+    end: true
+  },
   { to: `/households/${demoHouseholdId}`, label: "Household twin", icon: Users, end: true },
   { to: `/households/${demoHouseholdId}/compare`, label: "Decision lab", icon: Scale },
   { to: "/workbench", label: "Advisor workbench", icon: SlidersHorizontal, end: true },
@@ -108,9 +115,11 @@ export function AppShell() {
     ? "Decision Passport"
     : location.pathname.includes("/recommendation")
       ? "Recommendation studio"
-      : location.pathname.includes("/evidence-intake")
-        ? "Evidence-to-Twin"
-        : navigationTitle;
+      : location.pathname.includes("/strategy-compiler")
+        ? "Strategy Compiler"
+        : location.pathname.includes("/evidence-intake")
+          ? "Evidence-to-Twin"
+          : navigationTitle;
 
   return (
     <div className="app-shell">

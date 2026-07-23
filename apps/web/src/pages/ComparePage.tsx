@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   Fingerprint,
   Gauge,
+  GitBranch,
   Home,
   ShieldCheck,
   Scale,
@@ -18,7 +19,8 @@ import type {
   HouseholdResilienceComparison,
   ResilienceShock,
   ScenarioComparisonResponse,
-  ScenarioComparisonRequest
+  ScenarioComparisonRequest,
+  StrategyCompilation
 } from "@fidt/contracts";
 import { Badge, ErrorState, MiniLine } from "../components/Ui";
 import { api } from "../lib/api";
@@ -28,15 +30,21 @@ export function ComparePage() {
   const { householdId = "" } = useParams();
   const [search] = useSearchParams();
   const triggerEventId = search.get("event") ?? "";
+  const compilationId = search.get("compilation") ?? "";
+  const focusedCandidateId = search.get("candidate") ?? "";
   const preset = decisionPreset(triggerEventId, search);
   const promotedFromWorkbench = search.get("source") === "workbench";
+  const promotedFromCompiler = search.get("source") === "compiler" && Boolean(compilationId);
   return (
     <CompareWorkflow
       key={`${householdId}:${search.toString()}`}
       householdId={householdId}
       triggerEventId={triggerEventId}
+      compilationId={compilationId}
+      focusedCandidateId={focusedCandidateId}
       preset={preset}
       promotedFromWorkbench={promotedFromWorkbench}
+      promotedFromCompiler={promotedFromCompiler}
     />
   );
 }
@@ -44,13 +52,19 @@ export function ComparePage() {
 function CompareWorkflow({
   householdId,
   triggerEventId,
+  compilationId,
+  focusedCandidateId,
   preset,
-  promotedFromWorkbench
+  promotedFromWorkbench,
+  promotedFromCompiler
 }: {
   householdId: string;
   triggerEventId: string;
+  compilationId: string;
+  focusedCandidateId: string;
   preset: DecisionPreset;
   promotedFromWorkbench: boolean;
+  promotedFromCompiler: boolean;
 }) {
   const [capital, setCapital] = useState(preset.capital);
   const [purchasePrice, setPurchasePrice] = useState(preset.purchasePrice);
@@ -59,6 +73,7 @@ function CompareWorkflow({
   const [propertyHours, setPropertyHours] = useState(preset.propertyHours);
   const [triggerEvent, setTriggerEvent] = useState<FinancialEvent | null>(null);
   const [constitution, setConstitution] = useState<ClientConstitution | null>(null);
+  const [compilation, setCompilation] = useState<StrategyCompilation | null>(null);
   const [result, setResult] = useState<ScenarioComparisonResponse | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -68,9 +83,22 @@ function CompareWorkflow({
       setTriggerEvent(data.events.find((event) => event.id === triggerEventId) ?? null);
     });
   }, [householdId, triggerEventId]);
+  useEffect(() => {
+    if (!compilationId) return;
+    void api
+      .strategyCompilation(compilationId)
+      .then(setCompilation)
+      .catch((reason: unknown) =>
+        setError(reason instanceof Error ? reason.message : "Unknown error")
+      );
+  }, [compilationId]);
+  const effectiveCapital = compilation?.promotion.decisionCapital ?? capital;
+  const focusedCandidate = compilation?.candidates.find(
+    (candidate) => candidate.id === focusedCandidateId
+  );
   const request = useMemo<ScenarioComparisonRequest>(
     () => ({
-      decisionCapital: capital,
+      decisionCapital: effectiveCapital,
       ...(hasActiveShock(preset.resilienceShock)
         ? {
             preShockDecisionCapital: preset.preShockDecisionCapital,
@@ -78,47 +106,61 @@ function CompareWorkflow({
           }
         : {}),
       ...(triggerEventId ? { triggerEventId } : {}),
-      strategies: [
-        {
-          type: "RENTAL",
-          rental: {
-            purchasePrice,
-            downPaymentPercent: 0.25,
-            closingCostPercent: 0.03,
-            mortgageRate: mortgageRate / 100,
-            mortgageTermYears: 30,
-            monthlyRent: rent,
-            vacancyRate: 0.06,
-            managementRate: 0.08,
-            annualPropertyTax: purchasePrice * 0.013,
-            annualInsurance: purchasePrice * 0.0042,
-            annualMaintenanceRate: 0.01,
-            annualCapexRate: 0.0075,
-            appreciationRate: 0.03,
-            rentGrowthRate: 0.025,
-            sellingCostPercent: 0.06,
-            hoursPerMonth: propertyHours,
-            hourlyTimeValue: 90
-          }
-        },
-        {
-          type: "PORTFOLIO",
-          portfolio: {
-            initialInvestment: capital,
-            annualContribution: 0,
-            equityAllocation: 0.75,
-            bondAllocation: 0.2,
-            cashAllocation: 0.05,
-            fundExpenseRate: 0.0012
-          }
-        },
-        {
-          type: "DEBT_PAYDOWN",
-          debt: { liabilityId: "liability-student", lumpSum: Math.min(42_000, capital) }
-        }
-      ]
+      ...(compilationId ? { compilationId } : {}),
+      strategies: compilation
+        ? [...compilation.promotion.strategies]
+        : [
+            {
+              type: "RENTAL",
+              rental: {
+                purchasePrice,
+                downPaymentPercent: 0.25,
+                closingCostPercent: 0.03,
+                mortgageRate: mortgageRate / 100,
+                mortgageTermYears: 30,
+                monthlyRent: rent,
+                vacancyRate: 0.06,
+                managementRate: 0.08,
+                annualPropertyTax: purchasePrice * 0.013,
+                annualInsurance: purchasePrice * 0.0042,
+                annualMaintenanceRate: 0.01,
+                annualCapexRate: 0.0075,
+                appreciationRate: 0.03,
+                rentGrowthRate: 0.025,
+                sellingCostPercent: 0.06,
+                hoursPerMonth: propertyHours,
+                hourlyTimeValue: 90
+              }
+            },
+            {
+              type: "PORTFOLIO",
+              portfolio: {
+                initialInvestment: capital,
+                annualContribution: 0,
+                equityAllocation: 0.75,
+                bondAllocation: 0.2,
+                cashAllocation: 0.05,
+                fundExpenseRate: 0.0012
+              }
+            },
+            {
+              type: "DEBT_PAYDOWN",
+              debt: { liabilityId: "liability-student", lumpSum: Math.min(42_000, capital) }
+            }
+          ]
     }),
-    [capital, purchasePrice, rent, mortgageRate, propertyHours, triggerEventId, preset]
+    [
+      capital,
+      compilation,
+      compilationId,
+      effectiveCapital,
+      purchasePrice,
+      rent,
+      mortgageRate,
+      propertyHours,
+      triggerEventId,
+      preset
+    ]
   );
   const run = () => {
     setLoading(true);
@@ -136,11 +178,20 @@ function CompareWorkflow({
     <>
       <section className="hero-row compact">
         <div>
-          <span className="eyebrow coral">Decision lab · Same capital, same horizon</span>
-          <h1>Rental or financial freedom?</h1>
+          <span className="eyebrow coral">
+            {promotedFromCompiler
+              ? "Decision lab · Compiler-locked strategy set"
+              : "Decision lab · Same capital, same horizon"}
+          </span>
+          <h1>
+            {promotedFromCompiler
+              ? "How should the next RSU vest be deployed?"
+              : "Rental or financial freedom?"}
+          </h1>
           <p>
-            Compare liquidity, modeled outcomes, client workload, risk, and advisor economics—not
-            just headline return.
+            {promotedFromCompiler
+              ? "Rerun every constitution-eligible strategy under one assumption version, with the selected candidate focused for human review—not automatically recommended."
+              : "Compare liquidity, modeled outcomes, client workload, risk, and advisor economics—not just headline return."}
           </p>
         </div>
         <div className="trust-stamp small">
@@ -151,7 +202,21 @@ function CompareWorkflow({
           </div>
         </div>
       </section>
-      {triggerEvent ? (
+      {compilation ? (
+        <section className="decision-trigger compiler-promotion-trigger">
+          <span className="timeline-dot severity-low" />
+          <div>
+            <span className="eyebrow">Promoted from Strategy Compiler</span>
+            <strong>{compilation.opportunity.title}</strong>
+            <p>
+              {compilation.promotion.strategies.length} eligible strategies locked by{" "}
+              {compilation.compilerVersion}
+              {focusedCandidate ? ` · Advisor focus: ${focusedCandidate.label}` : ""}.
+            </p>
+          </div>
+          <Badge tone="good">Compiled</Badge>
+        </section>
+      ) : triggerEvent ? (
         <section className="decision-trigger" aria-label="Triggering decision event">
           <span className={`timeline-dot severity-${triggerEvent.severity.toLowerCase()}`} />
           <div>
@@ -185,76 +250,126 @@ function CompareWorkflow({
           <div className="panel-heading">
             <div>
               <span className="eyebrow">Decision inputs</span>
-              <h2>Planning assumptions</h2>
+              <h2>{compilation ? "Compiled assumptions" : "Planning assumptions"}</h2>
             </div>
           </div>
-          <div className="input-scope shared">
-            <strong>Shared across every strategy</strong>
-            <span>Controls Portfolio funding, Debt capacity, and Rental feasibility.</span>
-          </div>
-          <Input
-            label="Decision capital"
-            hint="Affects all three alternatives"
-            prefix="$"
-            value={capital}
-            onChange={setCapital}
-            step={1000}
-          />
-          <div className="input-scope rental-only">
-            <strong>Rental-only underwriting</strong>
-            <span>These values should change only the Rental scenario.</span>
-          </div>
-          <Input
-            label="Rental purchase price"
-            hint="Rental only"
-            prefix="$"
-            value={purchasePrice}
-            onChange={setPurchasePrice}
-            step={5000}
-          />
-          <Input
-            label="Monthly market rent"
-            hint="Rental only"
-            prefix="$"
-            value={rent}
-            onChange={setRent}
-            step={50}
-          />
-          <Input
-            label="Mortgage rate"
-            hint="Rental only"
-            suffix="%"
-            value={mortgageRate}
-            onChange={setMortgageRate}
-            step={0.05}
-          />
-          <Input
-            label="Property workload"
-            hint="Rental only"
-            suffix="hr/mo"
-            value={propertyHours}
-            onChange={setPropertyHours}
-            step={1}
-          />
-          {hasActiveShock(preset.resilienceShock) ? (
-            <div className="resilience-promotion-summary">
-              <div>
-                <ShieldCheck size={16} />
-                <strong>Resilience stress locked</strong>
+          {compilation ? (
+            <div className="compiled-decision-inputs">
+              <div className="input-scope shared">
+                <strong>Locked by Strategy Compiler</strong>
+                <span>
+                  Evidence, shared capital, and strategy definitions cannot drift during review.
+                </span>
               </div>
-              <span>
-                {preset.resilienceShock.incomeLossMonths} months ·{" "}
-                {percent.format(preset.resilienceShock.incomeLossPercent)} income reduction
-              </span>
-              <span>
-                {fullCurrency.format(preset.resilienceShock.emergencyExpense)} emergency ·{" "}
-                {percent.format(preset.resilienceShock.broadMarketDecline)} market decline
-              </span>
-              <small>
-                Pre-shock decision capital: {fullCurrency.format(preset.preShockDecisionCapital)}
-              </small>
+              <dl>
+                <div>
+                  <dt>Confirmed gross vest</dt>
+                  <dd>{fullCurrency.format(compilation.grossDecisionValue)}</dd>
+                </div>
+                <div>
+                  <dt>Modeled withholding</dt>
+                  <dd>{percent.format(compilation.modeledWithholdingRate)}</dd>
+                </div>
+                <div>
+                  <dt>Deployable capital</dt>
+                  <dd>{fullCurrency.format(compilation.decisionCapital)}</dd>
+                </div>
+                <div>
+                  <dt>Eligible alternatives</dt>
+                  <dd>{compilation.promotion.strategies.length}</dd>
+                </div>
+              </dl>
+              <div className="compiled-strategy-mini-list">
+                {compilation.candidates.map((candidate) => (
+                  <span
+                    className={`${candidate.status.toLowerCase()} ${candidate.id === focusedCandidate?.id ? "focused" : ""}`}
+                    key={candidate.id}
+                  >
+                    <GitBranch size={12} />
+                    <b>{candidate.label}</b>
+                    <small>
+                      {candidate.id === focusedCandidate?.id
+                        ? "Advisor focus"
+                        : candidate.status === "REJECTED"
+                          ? "Rejected"
+                          : candidate.dominance.replaceAll("_", " ")}
+                    </small>
+                  </span>
+                ))}
+              </div>
             </div>
-          ) : null}
+          ) : (
+            <>
+              <div className="input-scope shared">
+                <strong>Shared across every strategy</strong>
+                <span>Controls Portfolio funding, Debt capacity, and Rental feasibility.</span>
+              </div>
+              <Input
+                label="Decision capital"
+                hint="Affects all three alternatives"
+                prefix="$"
+                value={capital}
+                onChange={setCapital}
+                step={1000}
+              />
+              <div className="input-scope rental-only">
+                <strong>Rental-only underwriting</strong>
+                <span>These values should change only the Rental scenario.</span>
+              </div>
+              <Input
+                label="Rental purchase price"
+                hint="Rental only"
+                prefix="$"
+                value={purchasePrice}
+                onChange={setPurchasePrice}
+                step={5000}
+              />
+              <Input
+                label="Monthly market rent"
+                hint="Rental only"
+                prefix="$"
+                value={rent}
+                onChange={setRent}
+                step={50}
+              />
+              <Input
+                label="Mortgage rate"
+                hint="Rental only"
+                suffix="%"
+                value={mortgageRate}
+                onChange={setMortgageRate}
+                step={0.05}
+              />
+              <Input
+                label="Property workload"
+                hint="Rental only"
+                suffix="hr/mo"
+                value={propertyHours}
+                onChange={setPropertyHours}
+                step={1}
+              />
+              {hasActiveShock(preset.resilienceShock) ? (
+                <div className="resilience-promotion-summary">
+                  <div>
+                    <ShieldCheck size={16} />
+                    <strong>Resilience stress locked</strong>
+                  </div>
+                  <span>
+                    {preset.resilienceShock.incomeLossMonths} months ·{" "}
+                    {percent.format(preset.resilienceShock.incomeLossPercent)} income reduction
+                  </span>
+                  <span>
+                    {fullCurrency.format(preset.resilienceShock.emergencyExpense)} emergency ·{" "}
+                    {percent.format(preset.resilienceShock.broadMarketDecline)} market decline
+                  </span>
+                  <small>
+                    Pre-shock decision capital:{" "}
+                    {fullCurrency.format(preset.preShockDecisionCapital)}
+                  </small>
+                </div>
+              ) : null}
+            </>
+          )}
           {constitution ? <ConstitutionCard constitution={constitution} /> : null}
           <div className="assumption-note">
             <AlertTriangle size={16} />
@@ -263,8 +378,18 @@ function CompareWorkflow({
               outside this demo.
             </p>
           </div>
-          <button className="button primary full" onClick={run} disabled={loading}>
-            {loading ? "Running 3,000 paths…" : "Run versioned comparison"}
+          <button
+            className="button primary full"
+            onClick={run}
+            disabled={loading || (promotedFromCompiler && !compilation)}
+          >
+            {loading
+              ? compilation
+                ? "Running locked strategy set…"
+                : "Running 3,000 paths…"
+              : compilation
+                ? `Run locked ${compilation.promotion.strategies.length}-strategy comparison`
+                : "Run versioned comparison"}
             <ArrowRight size={16} />
           </button>
         </aside>
@@ -272,29 +397,47 @@ function CompareWorkflow({
           {error ? <ErrorState message={error} retry={run} /> : null}
           {!result && !error ? (
             <div className="empty-comparison">
-              <Scale />
-              <h2>Make the tradeoffs visible</h2>
+              {compilation ? <GitBranch /> : <Scale />}
+              <h2>{compilation ? "Rerun the compiled frontier" : "Make the tradeoffs visible"}</h2>
               <p>
-                Run the model to calculate rental cash flow and DSCR, a seeded portfolio simulation,
-                and debt-paydown economics under one assumption set.
+                {compilation
+                  ? "Every eligible RSU strategy will be recalculated from its locked allocation. The focused option is a review lens—not a recommendation."
+                  : "Run the model to calculate rental cash flow and DSCR, a seeded portfolio simulation, and debt-paydown economics under one assumption set."}
               </p>
               <div>
-                <span>
-                  <Home />
-                  Rental property
-                </span>
-                <span>
-                  <TrendingUp />
-                  Diversified portfolio
-                </span>
-                <span>
-                  <CheckCircle2 />
-                  Debt reduction
-                </span>
+                {compilation ? (
+                  compilation.promotion.strategies.slice(0, 3).map((strategy) => (
+                    <span key={strategy.rsuAction?.planType}>
+                      <GitBranch />
+                      {strategy.rsuAction?.planType.replaceAll("_", " ")}
+                    </span>
+                  ))
+                ) : (
+                  <>
+                    <span>
+                      <Home />
+                      Rental property
+                    </span>
+                    <span>
+                      <TrendingUp />
+                      Diversified portfolio
+                    </span>
+                    <span>
+                      <CheckCircle2 />
+                      Debt reduction
+                    </span>
+                  </>
+                )}
               </div>
             </div>
           ) : null}
-          {result ? <ScenarioResults result={result} householdId={householdId} /> : null}
+          {result ? (
+            <ScenarioResults
+              result={result}
+              householdId={householdId}
+              focusedPlanType={focusedCandidate?.planType ?? null}
+            />
+          ) : null}
         </div>
       </section>
     </>
@@ -303,10 +446,12 @@ function CompareWorkflow({
 
 function ScenarioResults({
   result,
-  householdId
+  householdId,
+  focusedPlanType
 }: {
   result: ScenarioComparisonResponse;
   householdId: string;
+  focusedPlanType: string | null;
 }) {
   const leading = [...result.scenarios]
     .filter((scenario) => scenario.capitalUse.feasible)
@@ -329,101 +474,111 @@ function ScenarioResults({
       </div>
       {result.resilience ? <GovernedResilienceResult resilience={result.resilience} /> : null}
       <div className="scenario-grid">
-        {result.scenarios.map((scenario) => (
-          <article
-            className={`scenario-card ${scenario.id === leading?.id ? "leading" : ""}`}
-            key={scenario.id}
-          >
-            <header>
-              <div>
-                <span className="scenario-icon">
-                  {scenario.strategy === "RENTAL" ? (
-                    <Home />
-                  ) : scenario.strategy === "PORTFOLIO" ? (
-                    <TrendingUp />
-                  ) : (
-                    <CheckCircle2 />
-                  )}
-                </span>
+        {result.scenarios.map((scenario) => {
+          const advisorFocused = scenario.calculations.planType === focusedPlanType;
+          return (
+            <article
+              className={`scenario-card ${scenario.id === leading?.id ? "leading" : ""} ${advisorFocused ? "advisor-focused" : ""}`}
+              key={scenario.id}
+            >
+              <header>
                 <div>
-                  <span>{scenario.strategy.replace("_", " ")}</span>
-                  <h2>{scenario.label}</h2>
+                  <span className="scenario-icon">
+                    {scenario.strategy === "RENTAL" ? (
+                      <Home />
+                    ) : scenario.strategy === "PORTFOLIO" ? (
+                      <TrendingUp />
+                    ) : scenario.strategy === "RSU_ACTION" ? (
+                      <GitBranch />
+                    ) : (
+                      <CheckCircle2 />
+                    )}
+                  </span>
+                  <div>
+                    <span>{scenario.strategy.replace("_", " ")}</span>
+                    <h2>{scenario.label}</h2>
+                  </div>
+                </div>
+                <div className="scenario-badge-stack">
+                  {advisorFocused ? <Badge tone="info">Advisor focus</Badge> : null}
+                  {scenario.id === leading?.id ? <Badge tone="good">Leading model</Badge> : null}
+                </div>
+              </header>
+              <MiniLine
+                values={scenario.timeline.map((year) => year.liquidAssets)}
+                tone={
+                  scenario.strategy === "RENTAL"
+                    ? "coral"
+                    : scenario.strategy === "PORTFOLIO"
+                      ? "teal"
+                      : "gold"
+                }
+              />
+              <dl className="scenario-stats">
+                <div>
+                  <dt>
+                    {scenario.capitalUse.feasible ? "Shared capital used" : "Capital required"}
+                  </dt>
+                  <dd>{fullCurrency.format(scenario.capitalUse.deployed)}</dd>
+                </div>
+                <div>
+                  <dt>Capital remaining</dt>
+                  <dd>{fullCurrency.format(scenario.capitalUse.residual)}</dd>
+                </div>
+                <div>
+                  <dt>Modeled FI success</dt>
+                  <dd>{percent.format(scenario.successProbability)}</dd>
+                </div>
+                <div>
+                  <dt>FI age</dt>
+                  <dd>{scenario.fiAge ?? "—"}</dd>
+                </div>
+                <div>
+                  <dt>Horizon net worth</dt>
+                  <dd>{currency.format(scenario.projectedNetWorth)}</dd>
+                </div>
+                <div>
+                  <dt>Annual cash flow</dt>
+                  <dd>{fullCurrency.format(scenario.annualCashFlow)}</dd>
+                </div>
+                <div>
+                  <dt>Client time cost</dt>
+                  <dd>{fullCurrency.format(scenario.clientTimeCost)}</dd>
+                </div>
+                <div>
+                  <dt>1st-year advisory fee</dt>
+                  <dd>{fullCurrency.format(scenario.firstYearAdvisoryFee)}</dd>
+                </div>
+              </dl>
+              <div className={`capital-verdict ${scenario.capitalUse.feasible ? "pass" : "fail"}`}>
+                {scenario.capitalUse.feasible ? <CheckCircle2 /> : <AlertTriangle />}
+                <div>
+                  <strong>
+                    {scenario.capitalUse.feasible
+                      ? "Within shared-capital constraint"
+                      : `Capital shortfall: ${fullCurrency.format(scenario.capitalUse.required - scenario.capitalUse.available)}`}
+                  </strong>
+                  <span>{scenario.capitalUse.affectedInputs.join(" · ")}</span>
                 </div>
               </div>
-              {scenario.id === leading?.id ? <Badge tone="good">Leading model</Badge> : null}
-            </header>
-            <MiniLine
-              values={scenario.timeline.map((year) => year.liquidAssets)}
-              tone={
-                scenario.strategy === "RENTAL"
-                  ? "coral"
-                  : scenario.strategy === "PORTFOLIO"
-                    ? "teal"
-                    : "gold"
-              }
-            />
-            <dl className="scenario-stats">
-              <div>
-                <dt>{scenario.capitalUse.feasible ? "Shared capital used" : "Capital required"}</dt>
-                <dd>{fullCurrency.format(scenario.capitalUse.deployed)}</dd>
-              </div>
-              <div>
-                <dt>Capital remaining</dt>
-                <dd>{fullCurrency.format(scenario.capitalUse.residual)}</dd>
-              </div>
-              <div>
-                <dt>Modeled FI success</dt>
-                <dd>{percent.format(scenario.successProbability)}</dd>
-              </div>
-              <div>
-                <dt>FI age</dt>
-                <dd>{scenario.fiAge ?? "—"}</dd>
-              </div>
-              <div>
-                <dt>Horizon net worth</dt>
-                <dd>{currency.format(scenario.projectedNetWorth)}</dd>
-              </div>
-              <div>
-                <dt>Annual cash flow</dt>
-                <dd>{fullCurrency.format(scenario.annualCashFlow)}</dd>
-              </div>
-              <div>
-                <dt>Client time cost</dt>
-                <dd>{fullCurrency.format(scenario.clientTimeCost)}</dd>
-              </div>
-              <div>
-                <dt>1st-year advisory fee</dt>
-                <dd>{fullCurrency.format(scenario.firstYearAdvisoryFee)}</dd>
-              </div>
-            </dl>
-            <div className={`capital-verdict ${scenario.capitalUse.feasible ? "pass" : "fail"}`}>
-              {scenario.capitalUse.feasible ? <CheckCircle2 /> : <AlertTriangle />}
-              <div>
-                <strong>
-                  {scenario.capitalUse.feasible
-                    ? "Within shared-capital constraint"
-                    : `Capital shortfall: ${fullCurrency.format(scenario.capitalUse.required - scenario.capitalUse.available)}`}
-                </strong>
-                <span>{scenario.capitalUse.affectedInputs.join(" · ")}</span>
-              </div>
-            </div>
-            <div className="risk-stack">
-              {scenario.risks.length ? (
-                scenario.risks.map((risk) => (
-                  <span key={risk.code}>
-                    <AlertTriangle />
-                    {risk.message}
+              <div className="risk-stack">
+                {scenario.risks.length ? (
+                  scenario.risks.map((risk) => (
+                    <span key={risk.code}>
+                      <AlertTriangle />
+                      {risk.message}
+                    </span>
+                  ))
+                ) : (
+                  <span className="no-risk">
+                    <CheckCircle2 />
+                    No engine threshold breached
                   </span>
-                ))
-              ) : (
-                <span className="no-risk">
-                  <CheckCircle2 />
-                  No engine threshold breached
-                </span>
-              )}
-            </div>
-          </article>
-        ))}
+                )}
+              </div>
+            </article>
+          );
+        })}
       </div>
       {result.analysis ? <CounterfactualAnalysis analysis={result.analysis} /> : null}
       {result.conflicts.length ? (

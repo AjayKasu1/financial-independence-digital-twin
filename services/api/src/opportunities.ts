@@ -87,7 +87,7 @@ export function buildOpportunityRadar(input: OpportunityRadarInput): Opportunity
       action: rsuEvidenceReady
         ? {
             label: "Compile strategy",
-            to: comparePath(input.household.id, eventId(input.events, "RSU_VEST"))
+            to: `/households/${input.household.id}/strategy-compiler?opportunity=opportunity-rsu-${input.household.id}`
           }
         : {
             label: "Admit RSU evidence",

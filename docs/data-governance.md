@@ -16,6 +16,7 @@
 | Evidence document    | Synthetic structured text, SHA-256 content hash, allowlisted extraction | Encrypted object storage, malware scan, retention and access policy  |
 | Extracted fact       | Proposed until advisor confirmation; source excerpt and confidence      | Dual control for sensitive fields, reconciliation and exception SLA  |
 | Opportunity score    | Deterministic queue rank with visible reasons and blockers              | Versioned methodology, drift review, fairness and outcome monitoring |
+| Strategy compilation | Versioned bounded alternatives, constraints, economics, frontier        | Template governance, change control, suitability and outcome review  |
 
 ## Evidence admission
 
@@ -28,6 +29,12 @@ Production personal-document ingestion would additionally require encrypted bina
 ## Opportunity Radar boundary
 
 The Radar score is a deterministic work-queue priority, not a financial recommendation, product score, or approval. It ranks deadline urgency, capital at stake, constitution status, evidence readiness, and passport impact. All inputs and reasons are returned with the score. Recommendation approval and execution remain separate server-controlled workflows.
+
+## Strategy Compiler boundary
+
+Strategy Compiler v1 accepts only an evidence-ready RSU opportunity. It enumerates five reviewed action templates, runs them through the deterministic financial engine, rejects signed Client Constitution breaches, exposes advisor-revenue differences, and labels the Pareto frontier. No LLM creates a strategy, changes a calculation, or selects a winner.
+
+An advisor-selected focus is presentation state, not a recommendation. Promotion sends every eligible alternative together, and the server compares household id, event id, capital, and strategies with the stored immutable compilation before a scenario run can be created. Compilation and promotion are separate hash-chained audit events. Tax-basis review remains explicitly missing execution evidence and no trade or custodian instruction is produced.
 
 ## Public connectors
 

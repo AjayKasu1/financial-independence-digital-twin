@@ -15,6 +15,9 @@ flowchart TB
   Confirm --> D1
   D1 --> Radar["Deterministic Opportunity Radar"]
   Radar --> Browser
+  Radar --> Compiler["Deterministic Strategy Compiler"]
+  Compiler --> Domain
+  Compiler --> D1
   Worker --> KV["KV cache"]
   Worker --> Domain["Deterministic domain package"]
   Worker --> AI["Recommendation orchestrator"]
@@ -47,21 +50,24 @@ flowchart TB
 4. The Opportunity Radar reconstructs priority from the current twin, deadline, capital at stake, Client Constitution, admitted evidence, and latest Decision Passport state. The score controls queue order only.
 5. The Advisor Workbench can run the same deterministic engines against cloned household facts and session-only constraints. It does not persist results or append audit events.
 6. Resilience Mode clones the household, applies a validated shock, calculates six weighted controls, and reports which uses of decision capital remain feasible. No LLM participates in the score.
-7. Promoting a workbench or Radar opportunity transfers its event and economic inputs into the governed Decision Lab; the signed Client Constitution is restored.
-8. The API validates governed strategy and stress inputs with Zod and rejects decision capital greater than the stress-preserved amount.
-9. The domain package runs all strategies under one immutable assumption object and seed.
-10. The API calculates potential advisor-revenue differences and persists the governed run, optionality assessment, and shock inputs.
-11. The recommendation orchestrator sees selected household fields, scenario outputs, optionality output, allowed citations, and conflicts.
-12. Model output must satisfy the recommendation schema; otherwise the deterministic fallback is used.
-13. The policy engine independently evaluates the draft and treats signed resilience-floor breaches as blocking.
-14. A human must attest before approval is stored.
-15. Approval issues an immutable passport whose canonical payload—including resilience output—is hashed and signed server-side.
-16. A scheduled monitor reevaluates scenario and resilience conditions against refreshed data and current household facts.
-17. Evidence, scenario, model, passport, monitor, and human actions append to the hash-chained audit table.
+7. An evidence-ready RSU opportunity enters Strategy Compiler. Versioned templates enumerate five bounded allocations; the deterministic domain engine calculates outcomes and the compiler tests every candidate against the signed Client Constitution.
+8. Constitution-breaching candidates are rejected. Eligible candidates receive advisor-economics deltas and deterministic Pareto-dominance labels. The compiler does not generate strategies with AI and does not select or recommend a winner.
+9. An advisor may focus one eligible candidate for review, but all eligible alternatives are promoted together. The API reloads the stored compilation and rejects changed capital, strategies, household, or triggering event.
+10. Promoting a workbench scenario transfers its event and economic inputs into the governed Decision Lab; the signed Client Constitution is restored.
+11. The API validates governed strategy and stress inputs with Zod and rejects decision capital greater than the stress-preserved amount.
+12. The domain package runs all strategies under one immutable assumption object and seed.
+13. The API calculates potential advisor-revenue differences and persists the governed run, compilation lineage, optionality assessment, and shock inputs.
+14. The recommendation orchestrator sees selected household fields, scenario outputs, optionality output, allowed citations, and conflicts.
+15. Model output must satisfy the recommendation schema; otherwise the deterministic fallback is used.
+16. The policy engine independently evaluates the draft and treats signed resilience-floor breaches as blocking.
+17. A human must attest before approval is stored.
+18. Approval issues an immutable passport whose canonical payload—including resilience output—is hashed and signed server-side.
+19. A scheduled monitor reevaluates scenario and resilience conditions against refreshed data and current household facts.
+20. Evidence, compilation, scenario, model, passport, monitor, and human actions append to the hash-chained audit table.
 
 ## Persistence
 
-D1 stores a snapshot JSON for fast reconstruction plus normalized evidence-document, extraction, and source-fact records. Structured demo source text is retained only to demonstrate deterministic extraction; production binary documents require encrypted object storage, malware scanning, access control, and retention policy. Monetary columns in normalized financial tables use integer cents. Scenario outputs, Client Constitutions, prompts metadata, compliance decisions, Decision Passport payloads, validity checks, and audit metadata are immutable JSON snapshots. Passport status is mutable only through the monitor; invalidation is one-way and every status transition is audited.
+D1 stores a snapshot JSON for fast reconstruction plus normalized evidence-document, extraction, source-fact, and strategy-compilation records. Structured demo source text is retained only to demonstrate deterministic extraction; production binary documents require encrypted object storage, malware scanning, access control, and retention policy. Monetary columns in normalized financial tables use integer cents. Compiled candidate sets, scenario outputs, Client Constitutions, prompts metadata, compliance decisions, Decision Passport payloads, validity checks, and audit metadata are immutable JSON snapshots. Scenario runs retain the compilation id when promoted from the compiler. Passport status is mutable only through the monitor; invalidation is one-way and every status transition is audited.
 
 The audit table has triggers that reject update and delete. Each event hashes its canonical content and the previous event hash. In a higher-assurance deployment, export daily chain heads to immutable object storage or an external timestamp service.
 
@@ -79,3 +85,5 @@ The audit table has triggers that reject update and delete. Each event hashes it
 - Unsupported evidence field: extraction returns 422 and nothing is persisted.
 - Unconfirmed evidence: facts remain proposed and cannot affect calculations or Radar readiness.
 - Duplicate evidence review: the server returns 409 and does not replay a twin update.
+- Unconfirmed RSU evidence: compilation is rejected before any strategy is created.
+- Modified compiled bundle: governed comparison returns 422; the stored eligible strategies and shared capital must be promoted exactly.
